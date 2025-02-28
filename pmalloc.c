@@ -24,6 +24,7 @@ long free_list_length() {
         length++;
         current = current->next;
     }
+    stats.free_length += length;
     return length;
 }
 
@@ -66,6 +67,12 @@ void* pmalloc(size_t size) {
                 } else {
                     mem = curr->next; // Remove from head
                 }
+                stats.chunks_allocated += 1;
+                /*
+               if(curr->next == NULL){
+                    mem = (void*)((char*)curr+size);
+                    mem->size -= size;
+                }*/
                 return (void*)((char*)curr + sizeof(header)); // Return pointer after size header
             }
             prev = curr;
@@ -79,7 +86,10 @@ void* pmalloc(size_t size) {
             exit(EXIT_FAILURE);
         }
         stats.pages_mapped += 1;
-        new_block->size = PAGE_SIZE - sizeof(header); // Adjust for the header
+        new_block->size = size; //PAGE_SIZE - sizeof(header); // Adjust for the header
+        mem = (void*)((char*)new_block + size);
+        mem->size = PAGE_SIZE - sizeof(header);
+        stats.chunks_allocated += 1;
         return (void*)((char*)new_block + sizeof(header));
     }
 
