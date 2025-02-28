@@ -109,11 +109,20 @@ void pfree(void* item) {
     stats.chunks_freed += 1;
     node* block = (node*)((char*)item - sizeof(header)); // Get the header part
 
+    
     // Add the freed block back to the free list
-    block->next = mem;
-    mem = block;
+    //block->next = mem;
+    //mem = block;
 
     // working on it adding code that merges free blocks
+    if (&block+block->size==&mem) {
+	    munmap(block, 4096);
+    }
+    else {
+	    block->next = mem;
+    }
+
+    mem = block;
 }
 
 /*int main() {
