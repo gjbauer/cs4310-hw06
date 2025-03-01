@@ -136,6 +136,11 @@ void pfree(void* item) {
     // working on it adding code that merges free blocks
     //printf("%u\n", (node*)((char*)block));
     //printf("%u\n", (node*)((char*)mem));
+    if (block->size>=PAGE_SIZE) {
+    		munmap(&block, block->size);
+		stats.pages_unmapped+= block->size/PAGE_SIZE;
+    }
+    else {
 	node *curr = mem;
 	node *prev = NULL;
 	while ((void*)block>(void*)curr&&curr) {	// Kepp the blocks sorted by where they appear in memory ;)
@@ -151,6 +156,7 @@ void pfree(void* item) {
 		mem = block;
 	}
 	pnodemerge();	// Run this command everytime you call free to merge mergeable sections...
+    }
 }
 
 void pnodemerge() {
