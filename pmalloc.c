@@ -81,7 +81,7 @@ void* pmalloc(size_t size) {
                     }
                 }
                 stats.chunks_allocated += 1;
-                
+                curr->size = size;
                 return (void*)((char*)curr + sizeof(header)); // Return pointer after size header
             }
             prev = curr;
@@ -120,8 +120,8 @@ void printflist() {
 	node *curr = mem;
 	while (curr) {
 		printf("node at : %u\n", (node*)((char*)curr));
-		curr=curr->next;
 		printf("reporting size : %u\n", curr->size);
+		curr=curr->next;
 	}
 }
 
