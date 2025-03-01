@@ -138,7 +138,7 @@ void pfree(void* item) {
     printf("%u\n", (node*)((char*)mem));	// Why is there a difference of 108 from the first malloc, but 200 for the second one?
 	node *curr = mem;
 	node *prev = NULL;
-	while ((void*)block<(void*)curr) {
+	while ((void*)block>(void*)curr) {
 		prev = curr;
 		curr = curr->next;
 	}
@@ -147,7 +147,7 @@ void pfree(void* item) {
 		prev->next=(node*)block;
 	}
 	else {
-		item=curr;
+		block->next = mem;
 		mem = block;
 	}
 }
