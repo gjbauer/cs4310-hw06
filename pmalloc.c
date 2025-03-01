@@ -10,11 +10,11 @@ static pm_stats stats;
 static node *mem = NULL; 
 
 char *pstrdup(char *arg) {
-	int i=0;
-	for(; arg[i]!=0; i++);
-	char *buf = pmalloc(i+1);
-	for(int j=0; j<=i; j++) buf[j]=arg[j];
-	return buf;
+        int i=0;
+        for(; arg[i]!=0; i++);
+        char *buf = pmalloc(i+1);
+        for(int j=0; j<=i; j++) buf[j]=arg[j];
+        return buf;
 }
 
 long free_list_length() {
@@ -63,26 +63,26 @@ void* pmalloc(size_t size) {
             if (curr->size >= size) {
                 // Found a large enough block
                 if (prev) {
-		    if (curr->next == NULL) {
-			prev->next = (void*)((char*)curr+size);
-			prev->next->size=curr->size-size;
-			curr->size=size;
-		    } else {
-                    	prev->next = curr->next;
-		    }
+                    if (curr->next == NULL) {
+                        prev->next = (void*)((char*)curr+size);
+                        prev->next->size=curr->size-size;
+                        curr->size=size;
+                    } else {
+                        prev->next = curr->next;
+                    }
                 } else {
-		    if (curr->next!=NULL)
+                    if (curr->next!=NULL)
                         mem = curr->next; // Remove from head
-		    else {
-			    mem->size -= size;
-			    mem = (void*)((char*)curr + size);
-		    }
+                    else {
+                            mem->size -= size;
+                            mem = (void*)((char*)curr + size);
+                    }
                 }
                 stats.chunks_allocated += 1;
                 
                /*if(curr->next == NULL){
-		    //printf("%d\n", size);
-		    mem->size -= size;
+                    //printf("%d\n", size);
+                    mem->size -= size;
                     mem = (void*)((char*)curr+size);
                     //mem->size -= size;
                 }*/
@@ -129,10 +129,10 @@ void pfree(void* item) {
 
     // working on it adding code that merges free blocks
     if (&block+block->size==&mem) {
-	    munmap(block, 4096);
+            munmap(block, 4096);
     }
     else {
-	    block->next = mem;
+            block->next = mem;
     }
 
     mem = block;
@@ -149,3 +149,4 @@ void pfree(void* item) {
     pprintstats();
     return 0;
 }*/
+
