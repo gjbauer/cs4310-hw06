@@ -2,6 +2,9 @@
 #include <sys/mman.h>
 #include <stdio.h>
 #include <unistd.h>
+#ifdef __linux__
+#include <sys/personality.h>
+#endif
 
 #include "pmalloc.h"
 
@@ -53,6 +56,9 @@ static size_t div_up(size_t xx, size_t yy) {
 }
 
 void* pmalloc(size_t size) {
+    #ifdef __linux__
+    personality(ADDR_NO_RANDOMIZE);
+    #endif
     size += sizeof(header); // Add space for storing the size.
 
     if (size < PAGE_SIZE) {
