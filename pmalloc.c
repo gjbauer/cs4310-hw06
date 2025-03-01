@@ -122,14 +122,14 @@ void* pmalloc(size_t size) {
     return (void*)((char*)new_block + sizeof(header)); // Return pointer after size header
 }
 
-void printflist() {
+/*void printflist() {
 	node *curr = mem;
 	while (curr) {
-		printf("node at : %u\n", (node*)((char*)curr));
-		printf("reporting size : %u\n", curr->size);
+		printf("node at : %u\n", (unsigned int)((char*)curr));
+		printf("reporting size : %lu\n", curr->size);
 		curr=curr->next;
 	}
-}
+}*/
 
 void pfree(void* item) {
     stats.chunks_freed += 1;
@@ -162,6 +162,26 @@ void pfree(void* item) {
 		mem = block;
 	}
 	pnodemerge();	// Run this command everytime you call free to merge mergeable sections...
+    freeuapages();
+    }
+}
+
+void freeuapages() {
+    node *curr = mem;
+    node *prev = NULL;
+    while (curr) {
+        if (curr->size>=PAGE_SIZE) {
+            if (prev) {
+                prev->next=curr->next;
+            } else {
+                mem=curr->next;
+            }
+            munmap(&curr, curr->size);
+        }
+        if (curr)
+            curr=curr->next;
+        else
+            curr=prev;
     }
 }
 
@@ -171,7 +191,7 @@ void pnodemerge() {
 	while (curr) {
 		//printf("curr+size : %u\n", (node*)((char*)curr+curr->size));
 		//printf("curr->next : %u\n", (node*)((char*)curr->next));
-		if ((node*)((char*)curr+curr->size)==(node*)((char*)curr->next)) {
+		if ((node*)((char*)curr+curr->size)==(node*)((char*)curr->next)&&curr->size<PAGE_SIZE) {
 			curr->size+=curr->next->size;
 			curr->next=curr->next->next;
 		} else {
