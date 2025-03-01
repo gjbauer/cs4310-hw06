@@ -162,7 +162,7 @@ void pfree(void* item) {
 		mem = block;
 	}
 	pnodemerge();	// Run this command everytime you call free to merge mergeable sections...
-    freeuapages();
+	freeuapages();
     }
 }
 
@@ -171,6 +171,9 @@ void freeuapages() {
     node *prev = NULL;
     while (curr) {
         if (curr->size>=PAGE_SIZE) {
+	    if (curr->size==PAGE_SIZE&&!curr->next) {
+		    return;
+	    }
             if (prev) {
                 prev->next=curr->next;
             } else {
@@ -192,8 +195,10 @@ void pnodemerge() {
 		//printf("curr+size : %u\n", (node*)((char*)curr+curr->size));
 		//printf("curr->next : %u\n", (node*)((char*)curr->next));
 		if ((node*)((char*)curr+curr->size)==(node*)((char*)curr->next)&&curr->size<PAGE_SIZE) {
-			curr->size+=curr->next->size;
-			curr->next=curr->next->next;
+			if (curr->next) {
+				curr->size+=curr->next->size;
+				curr->next=curr->next->next;
+			}
 		} else {
 			curr = curr->next;
 		}
