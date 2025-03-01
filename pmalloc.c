@@ -63,15 +63,28 @@ void* pmalloc(size_t size) {
             if (curr->size >= size) {
                 // Found a large enough block
                 if (prev) {
-                    prev->next = curr->next;
+		    if (curr->next == NULL) {
+			prev->next = (void*)((char*)curr+size);
+			prev->next->size=curr->size-size;
+			curr->size=size;
+		    } else {
+                    	prev->next = curr->next;
+		    }
                 } else {
-                    mem = curr->next; // Remove from head
+		    if (curr->next!=NULL)
+                        mem = curr->next; // Remove from head
+		    else {
+			    mem->size -= size;
+			    mem = (void*)((char*)curr + size);
+		    }
                 }
                 stats.chunks_allocated += 1;
-                /*
-               if(curr->next == NULL){
+                
+               /*if(curr->next == NULL){
+		    //printf("%d\n", size);
+		    mem->size -= size;
                     mem = (void*)((char*)curr+size);
-                    mem->size -= size;
+                    //mem->size -= size;
                 }*/
                 return (void*)((char*)curr + sizeof(header)); // Return pointer after size header
             }
