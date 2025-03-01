@@ -77,16 +77,11 @@ void* pmalloc(size_t size) {
                             int k = mem->size - size;
                             mem = (void*)((char*)curr + size);
 			    mem->size = k;
+			    printf("top of memory reporting size : %u\n", mem->size);
                     }
                 }
                 stats.chunks_allocated += 1;
                 
-               /*if(curr->next == NULL){
-                    //printf("%d\n", size);
-                    mem->size -= size;
-                    mem = (void*)((char*)curr+size);
-                    //mem->size -= size;
-                }*/
                 return (void*)((char*)curr + sizeof(header)); // Return pointer after size header
             }
             prev = curr;
@@ -102,7 +97,8 @@ void* pmalloc(size_t size) {
         stats.pages_mapped += 1;
         new_block->size = size; //PAGE_SIZE - sizeof(header); // Adjust for the header
         mem = (void*)((char*)new_block + size);
-        mem->size = PAGE_SIZE - sizeof(header);
+        mem->size = PAGE_SIZE - size;
+        printf("top of memory reporting size : %u\n", mem->size);
         stats.chunks_allocated += 1;
         return (void*)((char*)new_block + sizeof(header));
     }
@@ -120,6 +116,15 @@ void* pmalloc(size_t size) {
     return (void*)((char*)new_block + sizeof(header)); // Return pointer after size header
 }
 
+void printflist() {
+	node *curr = mem;
+	while (curr) {
+		printf("node at : %u\n", (node*)((char*)curr));
+		curr=curr->next;
+		printf("reporting size : %u\n", curr->size);
+	}
+}
+
 void pfree(void* item) {
     stats.chunks_freed += 1;
     node* block = (node*)((char*)item - sizeof(header)); // Get the header part
@@ -129,31 +134,35 @@ void pfree(void* item) {
     //block->next = mem;
     //mem = block;
     // working on it adding code that merges free blocks
-    //printf("%d\n", mem->size);
-    if (block->size>=4096) {
-	    size_t pages = div_up(block->size, PAGE_SIZE);
-	    munmap(block, block->size);
-	    stats.pages_unmapped+=pages;
-    }
-    else if (&block+block->size==&mem) {
-	    stats.pages_unmapped+=1;
-            munmap(block, 4096);
-    }
-    else {
-            block->next = mem;
-	    mem = block;
-    }
+    printf("%u\n", (node*)((char*)block));
+    printf("%u\n", (node*)((char*)mem));	// Why is there a difference of 108 from the first malloc, but 200 for the second one?
+	node *curr = mem;
+	node *prev = NULL;
+	while ((void*)block<(void*)curr) {
+		prev = curr;
+		curr = curr->next;
+	}
+	if (prev) {
+		item=curr;
+		prev->next=(node*)block;
+	}
+	else {
+		item=curr;
+		mem = block;
+	}
 }
 
-/*int main() {
+
+
+int main() {
     // Example usage of the custom malloc/free
     void* p1 = pmalloc(100);
     void* p2 = pmalloc(200);
     pfree(p1);
     pfree(p2);
-
+	printflist();
     // Print stats
     pprintstats();
     return 0;
-}*/
+}
 
