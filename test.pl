@@ -18,7 +18,7 @@ for my $path (@bad_files) {
 
 ok($bads == 0, "No binaries or output files");
 
-system("(cd tests && gmake clean && gmake) 2>&1 > /dev/null");
+system("(cd tests && make clean && make) 2>&1 > /dev/null");
 
 sub parse_stats {
     my ($text) = @_;
