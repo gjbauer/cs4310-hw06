@@ -74,8 +74,9 @@ void* pmalloc(size_t size) {
                     if (curr->next!=NULL)
                         mem = curr->next; // Remove from head
                     else {
-                            mem->size -= size;
+                            int k = mem->size - size;
                             mem = (void*)((char*)curr + size);
+			    mem->size = k;
                     }
                 }
                 stats.chunks_allocated += 1;
@@ -114,7 +115,8 @@ void* pmalloc(size_t size) {
         exit(EXIT_FAILURE);
     }
     stats.pages_mapped += pages_needed;
-    new_block->size = pages_needed * PAGE_SIZE - sizeof(header); // Adjust for header
+    new_block->size = pages_needed * PAGE_SIZE;
+    stats.chunks_allocated += 1;
     return (void*)((char*)new_block + sizeof(header)); // Return pointer after size header
 }
 
@@ -126,16 +128,21 @@ void pfree(void* item) {
     // Add the freed block back to the free list
     //block->next = mem;
     //mem = block;
-
     // working on it adding code that merges free blocks
-    if (&block+block->size==&mem) {
+    //printf("%d\n", mem->size);
+    if (block->size>=4096) {
+	    size_t pages = div_up(block->size, PAGE_SIZE);
+	    munmap(block, block->size);
+	    stats.pages_unmapped+=pages;
+    }
+    else if (&block+block->size==&mem) {
+	    stats.pages_unmapped+=1;
             munmap(block, 4096);
     }
     else {
             block->next = mem;
+	    mem = block;
     }
-
-    mem = block;
 }
 
 /*int main() {
