@@ -77,7 +77,7 @@ void* pmalloc(size_t size) {
                             int k = mem->size - size;
                             mem = (void*)((char*)curr + size);
 			    mem->size = k;
-			    printf("top of memory reporting size : %u\n", mem->size);
+			    //printf("top of memory reporting size : %u\n", mem->size);
                     }
                 }
                 stats.chunks_allocated += 1;
@@ -98,7 +98,7 @@ void* pmalloc(size_t size) {
         new_block->size = size; //PAGE_SIZE - sizeof(header); // Adjust for the header
         mem = (void*)((char*)new_block + size);
         mem->size = PAGE_SIZE - size;
-        printf("top of memory reporting size : %u\n", mem->size);
+        //printf("top of memory reporting size : %u\n", mem->size);
         stats.chunks_allocated += 1;
         return (void*)((char*)new_block + sizeof(header));
     }
@@ -134,35 +134,53 @@ void pfree(void* item) {
     //block->next = mem;
     //mem = block;
     // working on it adding code that merges free blocks
-    printf("%u\n", (node*)((char*)block));
-    printf("%u\n", (node*)((char*)mem));	// Why is there a difference of 108 from the first malloc, but 200 for the second one?
+    //printf("%u\n", (node*)((char*)block));
+    //printf("%u\n", (node*)((char*)mem));
 	node *curr = mem;
 	node *prev = NULL;
-	while ((void*)block>(void*)curr) {
+	while ((void*)block>(void*)curr&&curr) {	// Kepp the blocks sorted by where they appear in memory ;)
 		prev = curr;
 		curr = curr->next;
 	}
 	if (prev) {
-		item=curr;
-		prev->next=(node*)block;
+		prev->next = block;
+		block->next = curr;
 	}
 	else {
 		block->next = mem;
 		mem = block;
 	}
+	pnodemerge();	// Run this command everytime you call free to merge mergeable sections...
+}
+
+void pnodemerge() {
+	node *curr = mem;
+	node *prev = NULL;
+	while (curr) {
+		//printf("curr+size : %u\n", (node*)((char*)curr+curr->size));
+		//printf("curr->next : %u\n", (node*)((char*)curr->next));
+		if ((node*)((char*)curr+curr->size)==(node*)((char*)curr->next)) {
+			curr->size+=curr->next->size;
+			curr->next=curr->next->next;
+		} else {
+			curr = curr->next;
+		}
+	}
 }
 
 
 
-int main() {
+/*int main() {
     // Example usage of the custom malloc/free
     void* p1 = pmalloc(100);
     void* p2 = pmalloc(200);
     pfree(p1);
     pfree(p2);
 	printflist();
+	//pnodemerge();
+	//printflist();
     // Print stats
     pprintstats();
     return 0;
-}
+}*/
 

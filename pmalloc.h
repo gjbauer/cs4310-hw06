@@ -26,5 +26,6 @@ void pprintstats();
 
 void* pmalloc(size_t size);
 void pfree(void* item);
+void pnodemerge(void);
 
 #endif
