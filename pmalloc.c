@@ -102,8 +102,16 @@ void* pmalloc(size_t size) {
         }
         stats.pages_mapped += 1;
         new_block->size = size; //PAGE_SIZE - sizeof(header); // Adjust for the header
-        mem = (void*)((char*)new_block + size);
-        mem->size = PAGE_SIZE - size;
+	if (prev) {
+		prev->next = (void*)((char*)new_block + size);
+        	prev->next->size = PAGE_SIZE - size;
+	} else if (mem) {
+		mem->next = (void*)((char*)new_block + size);
+        	mem->next->size = PAGE_SIZE - size;
+	} else {
+        	mem = (void*)((char*)new_block + size);
+        	mem->size = PAGE_SIZE - size;
+	}
         //printf("top of memory reporting size : %u\n", mem->size);
         stats.chunks_allocated += 1;
         return (void*)((char*)new_block + sizeof(header));
@@ -143,6 +151,7 @@ void pfree(void* item) {
     //printf("%u\n", (node*)((char*)block));
     //printf("%u\n", (node*)((char*)mem));
     if (block->size>=PAGE_SIZE) {
+	        printf("%u\n", block->size);
     		munmap(&block, block->size);
 		stats.pages_unmapped+= block->size/PAGE_SIZE;
     }
@@ -171,7 +180,7 @@ void freeuapages() {
     node *prev = NULL;
     while (curr) {
         if (curr->size>=PAGE_SIZE) {
-	    if (curr->size==PAGE_SIZE&&!curr->next) {
+	    if (curr->next==NULL) {
 		    return;
 	    }
             if (prev) {
@@ -179,12 +188,10 @@ void freeuapages() {
             } else {
                 mem=curr->next;
             }
-            munmap(&curr, curr->size);
+	    //munmap(&curr, curr->size);
         }
         if (curr)
             curr=curr->next;
-        else
-            curr=prev;
     }
 }
 
