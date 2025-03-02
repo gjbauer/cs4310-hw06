@@ -23,11 +23,18 @@ char *pstrdup(char *arg) {
 long free_list_length() {
     long length = 0;
     node *current = mem;
-    while (current) {
+    while (current!=NULL) {
+        if(current->next == NULL){
+            //printf("IT IS NULL\n");
+            //exit(EXIT_FAILURE);
+        }
         length++;
+        printf("current : %u\n", current->size);
+        //printf("null : %d\n", NULL);
+        printf("current->next : %u\n", current->next->size);
         current = current->next;
     }
-    stats.free_length += length;
+   // stats.free_length += length;
     return length;
 }
 
@@ -61,6 +68,8 @@ void* pmalloc(size_t size) {
     #endif
     size += sizeof(header); // Add space for storing the size.
 
+    if (size<24) size=24;
+
     if (size < PAGE_SIZE) {
         // Try to find a free block in the list
         node* prev = NULL;
@@ -82,7 +91,7 @@ void* pmalloc(size_t size) {
                     else {
                             int k = mem->size - size;
                             mem = (void*)((char*)curr + size);
-			    mem->size = k;
+			                mem->size = k;
 			    //printf("top of memory reporting size : %u\n", mem->size);
                     }
                 }
@@ -102,6 +111,7 @@ void* pmalloc(size_t size) {
         }
         stats.pages_mapped += 1;
         new_block->size = size; //PAGE_SIZE - sizeof(header); // Adjust for the header
+        //new_block->prev = mem;
         mem = (void*)((char*)new_block + size);
         mem->size = PAGE_SIZE - size;
         //printf("top of memory reporting size : %u\n", mem->size);
@@ -143,13 +153,13 @@ void pfree(void* item) {
     //printf("%u\n", (node*)((char*)block));
     //printf("%u\n", (node*)((char*)mem));
     if (block->size>=PAGE_SIZE) {
-    		munmap(&block, block->size);
-		stats.pages_unmapped+= block->size/PAGE_SIZE;
+        block->next=mem;
+        mem=block;
     }
-    else {
+    if (block->size<PAGE_SIZE) {
 	node *curr = mem;
 	node *prev = NULL;
-	while ((void*)block>(void*)curr&&curr) {	// Kepp the blocks sorted by where they appear in memory ;)
+	while ((void*)block>(void*)curr&&curr) {//&&(void*)((char*)block+block->size)!=mem) {	// Keep the blocks sorted by where they appear in memory ;)
 		prev = curr;
 		curr = curr->next;
 	}
@@ -160,10 +170,10 @@ void pfree(void* item) {
 	else {
 		block->next = mem;
 		mem = block;
-	}
-	pnodemerge();	// Run this command everytime you call free to merge mergeable sections...
-	freeuapages();
     }
+    }
+    pnodemerge();	// Run this command everytime you call free to merge mergeable sections...
+    freeuapages();
 }
 
 void freeuapages() {
@@ -171,15 +181,16 @@ void freeuapages() {
     node *prev = NULL;
     while (curr) {
         if (curr->size>=PAGE_SIZE) {
-	    if (curr->size==PAGE_SIZE&&!curr->next) {
-		    return;
-	    }
+	        if (curr->size==PAGE_SIZE&&!curr->next) {
+		        return;
+	        }
             if (prev) {
                 prev->next=curr->next;
             } else {
                 mem=curr->next;
             }
             munmap(&curr, curr->size);
+            stats.pages_unmapped+=curr->size/PAGE_SIZE;
         }
         if (curr)
             curr=curr->next;
@@ -191,6 +202,7 @@ void freeuapages() {
 void pnodemerge() {
 	node *curr = mem;
 	node *prev = NULL;
+    if ()
 	while (curr) {
 		//printf("curr+size : %u\n", (node*)((char*)curr+curr->size));
 		//printf("curr->next : %u\n", (node*)((char*)curr->next));

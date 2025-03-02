@@ -15,6 +15,7 @@ typedef struct pm_stats {
 typedef struct node {
 	size_t size;
 	struct node *next;
+    struct node *prev;
 } node;
 
 typedef struct header {
