@@ -19,7 +19,7 @@ bool __thread first_run = true;
 const size_t PAGE_SIZE = 4096;
 static pm_stats stats;
 static __thread node **array = NULL;
-static __thread node *powers[8];
+static __thread node *powers[8] = {0};
 
 int
 findlist(void* src, node **list) {
@@ -38,8 +38,15 @@ nextfreelist() {
 node*
 walk(node *block, void *list) {
 	node *next = (node*)list;
-	while ((char*)block>(char*)next&&next) {
-		next = next->next;
+	if (block==NULL) {
+		while (next->next>0x0) {
+			next = next->next;
+		}
+	}
+	else {
+		while ((char*)block>(char*)next&&next) {
+			next = next->next;
+		}
 	}
 	return next;
 }
@@ -89,16 +96,23 @@ pnodemerge(int list) {
 }
 
 void
-climb(node *n, int bytes) {
-	int size=n->size-bytes;
-	n = (node*)((char*)n+bytes);
-	n->size=size;
+climb(int n, int bytes) {
+	int size=array[n]->size-bytes;
+	array[n] = (node*)((char*)array[n]+bytes);
+	array[n]->size=size;
+}
+
+void
+pclimb(int n, int bytes) {
+	int size=powers[n]->size-bytes;
+	powers[n] = (node*)((char*)powers[n]+bytes);
+	powers[n]->size=size;
 }
 
 node*
 pop(node* list) {
-	node *block = list;
-	list = list->next;
+	node *block = walk(NULL, list);
+	block->prev->next = NULL;
 	return block;
 }
 
@@ -119,7 +133,7 @@ pownec(int bytes) {
 int
 nextbucket(int pow) {
 	int i;
-	for(i=pow-4;powers[i]!=0&&(i<8); i++);
+	for(i=pow;!(powers[i]>0x0)&&(i<8); i++);
 	if(i==8) return -1;
 	return i;
 }
@@ -127,21 +141,24 @@ nextbucket(int pow) {
 void
 divide(int top, int dest) {
 	if (top==dest) return;
-	node *k = pop(powers[top]);
-	node *f = k;
+	node *k = powers[top];
 	int s = pow(2, top+3);
-	climb(k, s);
-	f->next=k;
-	powers[top-1]=f;
+	pclimb(top, s);
+	k->next=powers[top];
+	powers[top-1]=k;
+	powers[top]=NULL;
 	divide(top-1, dest);
 }
 
 void*
 bucket_malloc(size_t size) {
-	int p = pownec(size);
+	int p = pownec(size)-4;
 	int n = nextbucket(p);
-	if(n==-1) n--, bucketpage();
-	else if (n!=p-4) divide(n, p);
+	if(n==-1) n=7, bucketpage();
+	if (n!=p) divide(n, p);
+	size_t *r = (size_t*)powers[p];
+	powers[p]=powers[p]->next;
+	return r + 1;
 }
 
 char *pstrdup(char *arg) {
@@ -218,13 +235,13 @@ void* pmalloc_helper(size_t size) {
             if (curr->size > size) {	// Found a large enough block
                 if (prev) {
                     if (curr->next==NULL&&curr->size-size<=sizeof(node*)) k = mapnextpage();
-                    else if (curr->next==NULL) climb(array[k], size);
+                    else if (curr->next==NULL) climb(k, size);
 		    else prev->next = curr->next;
                 } else {
                     if (curr->size-size<=sizeof(node*)) k = mapnextpage();
                     else {
                     	ptr = (size_t*)array[k];
-                    	climb(array[k], size);
+                    	climb(k, size);
                     	*ptr=size;
                     }
                 }
@@ -239,7 +256,7 @@ void* pmalloc_helper(size_t size) {
         k = mapnextpage();
         
         ptr = (size_t*)array[k];
-	climb(array[k], size);
+	climb(k, size);
 	*ptr=size;
 	
 	stats.pages_mapped += 1;
@@ -454,7 +471,7 @@ pfree(void* ap)
   	size_free(ptr);
   	break;
   default:
-  	pfree_helper(ptr);
+  	//pfree_helper(ptr);
   	break;
   }
 }
@@ -467,7 +484,6 @@ pmalloc(size_t nbytes)
   	personality(ADDR_NO_RANDOMIZE);
   	array=mmap(0, 4096, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_SHARED, -1, 0);
   	for(int i=0;i<4096/sizeof(node*);i++) array[i]=0;
-  	for(int i=0;i<8;i++)powers[i]=0;
   	first_run = false;
   }
   nbytes += sizeof(header);
@@ -498,8 +514,24 @@ pmalloc(size_t nbytes)
   	return size520_malloc();
   	break;
   default:
-  	return pmalloc_helper(nbytes);
+  	return bucket_malloc(nbytes);
   	break;
   }
+}
+
+int main() {
+    // Example usage of the custom malloc/free
+    char* p1 = pmalloc(100);
+    void* p2 = pmalloc(200);
+    for(int i=0; i<50; i++) p1[i]='h';
+    printf("%s\n", p1);
+    //pfree(p1);
+    //pfree(p2);
+	//printflist();
+	//pnodemerge();
+	//printflist();
+    // Print stats
+    pprintstats();
+    return 0;
 }
 

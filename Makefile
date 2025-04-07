@@ -1,5 +1,5 @@
 pmalloc:
-	gcc -g -o pmalloc pmalloc.c
+	gcc -g -o pmalloc pmalloc.c -lm
 
 all:
 	(cd tests && make)
