@@ -80,7 +80,7 @@ nextfreelist() {
 node*
 walk(node *block, void *list) {
 	node *next = (node*)list;
-	while ((char*)block>(char*)next&&next) {	// Kepp the blocks sorted by where they appear in memory ;)
+	while ((char*)block>(char*)next&&next) {
 		next = next->next;
 	}
 	return next;
@@ -166,11 +166,11 @@ freepages(void* list) {
 
 void pfree_helper(void* item) {
     stats.chunks_freed += 1;
-    node* block = (node*)item; // Get the header part
+    node* block = (node*)item;
     int k = findlist(item);
     if (block->size<PAGE_SIZE) {
 	addtolist(item, array[k]);
-	pnodemerge(k);	// Run this command everytime you call free to merge mergeable sections...
+	pnodemerge(k);	// Merge
     } else {
     	stats.pages_unmapped+=block->size/PAGE_SIZE;
     	munmap(&block, block->size);
@@ -188,19 +188,17 @@ void* pmalloc_helper(size_t size) {
     #ifdef __linux__
     personality(ADDR_NO_RANDOMIZE);
     #endif
-    size += sizeof(size_t); // Add space for storing the size.
+    size += sizeof(size_t); // Header.
     static int k = 0;
     size_t* ptr=0;
     
-    if ((char*)array[k]==0x0&&size<=4096) {
+    if (array[k]==0&&size<=4096) {
     	k = mapnextpage();
     } 
 
     if (size < PAGE_SIZE) {
-        // Try to find a free block in the list
         node* prev = NULL;
         node* curr = array[k]; // Head of free list
-        if (curr->size<sizeof(node*)+size&&curr->next==0) k = mapnextpage();
         while (curr) {
             if (curr->size > size) {	// Found a large enough block
                 if (prev) {
@@ -210,7 +208,7 @@ void* pmalloc_helper(size_t size) {
                 } else {
                     if (curr->size-size<=sizeof(node*)) k = mapnextpage();
                     else {
-                    	ptr = (void*)array[k];
+                    	ptr = (size_t*)array[k];
                     	climb(k, size);
                     	*ptr=size;
                     }
@@ -225,7 +223,7 @@ void* pmalloc_helper(size_t size) {
         // No suitable block found, allocate new page
         k = mapnextpage();
         
-        ptr = (void*)array[k];
+        ptr = (size_t*)array[k];
 	climb(k, size);
 	*ptr=size;
 	
@@ -236,14 +234,14 @@ void* pmalloc_helper(size_t size) {
 
     // Handle large allocation (>= 1 page)
     size_t pages_needed = div_up(size, PAGE_SIZE);
-    node* new_block = mmap(0, pages_needed * PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+    size_t* new_block = mmap(0, pages_needed * PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
     if (new_block == MAP_FAILED) {
         perror("mmap failed");
         exit(EXIT_FAILURE);
     }
     stats.pages_mapped += pages_needed;
-    new_block->size = pages_needed * PAGE_SIZE;
     stats.chunks_allocated += 1;
+    *new_block = pages_needed * PAGE_SIZE;
     return new_block + 1; // Return pointer after size header
 }
 
@@ -260,15 +258,32 @@ void* pmalloc_helper(size_t size) {
 
 // (uintptr_t)a / 4096 == ( uintptr_t ) b / 4096
 
-void size32_free(void* ptr) {
+void size_free(void* ptr) {
 	stats.chunks_freed += 1;
 	int k = findlist(ptr);
 	addtolist(ptr, array[k]);
 	pnodemerge(k);
 }
 
+void* size24_malloc() {
+	static int k = 0;
+	if (array[k]==0) {
+		k = mapnextpage();
+	}
+	if (array[k]->size>24) {
+		size_t* ptr = (void*)array[k];
+		array[k] = (node*)((char*)array[k]+24);
+		array[k]->size = *ptr-24;
+		*ptr=24;
+		stats.chunks_allocated += 1;
+		return ptr + 1;
+	} else {
+		k = mapnextpage();
+		return size24_malloc();
+	}
+}
+
 void* size32_malloc() {
-	//printf("32malloc\n");
 	static int k = 0;
 	if (array[k]==0) {
 		k = mapnextpage();
@@ -286,6 +301,114 @@ void* size32_malloc() {
 	}
 }
 
+void* size40_malloc() {
+	static int k = 0;
+	if (array[k]==0) {
+		k = mapnextpage();
+	}
+	if (array[k]->size>40) {
+		size_t* ptr = (void*)array[k];
+		array[k] = (node*)((char*)array[k]+40);
+		array[k]->size = *ptr-40;
+		*ptr=40;
+		stats.chunks_allocated += 1;
+		return ptr + 1;
+	} else {
+		k = mapnextpage();
+		return size40_malloc();
+	}
+}
+
+void* size64_malloc() {
+	static int k = 0;
+	if (array[k]==0) {
+		k = mapnextpage();
+	}
+	if (array[k]->size>64) {
+		size_t* ptr = (void*)array[k];
+		array[k] = (node*)((char*)array[k]+64);
+		array[k]->size = *ptr-64;
+		*ptr=64;
+		stats.chunks_allocated += 1;
+		return ptr + 1;
+	} else {
+		k = mapnextpage();
+		return size64_malloc();
+	}
+}
+
+void* size72_malloc() {
+	static int k = 0;
+	if (array[k]==0) {
+		k = mapnextpage();
+	}
+	if (array[k]->size>72) {
+		size_t* ptr = (void*)array[k];
+		array[k] = (node*)((char*)array[k]+72);
+		array[k]->size = *ptr-72;
+		*ptr=72;
+		stats.chunks_allocated += 1;
+		return ptr + 1;
+	} else {
+		k = mapnextpage();
+		return size72_malloc();
+	}
+}
+
+void* size136_malloc() {
+	static int k = 0;
+	if (array[k]==0) {
+		k = mapnextpage();
+	}
+	if (array[k]->size>136) {
+		size_t* ptr = (void*)array[k];
+		array[k] = (node*)((char*)array[k]+136);
+		array[k]->size = *ptr-136;
+		*ptr=136;
+		stats.chunks_allocated += 1;
+		return ptr + 1;
+	} else {
+		k = mapnextpage();
+		return size136_malloc();
+	}
+}
+
+void* size264_malloc() {
+	static int k = 0;
+	if (array[k]==0) {
+		k = mapnextpage();
+	}
+	if (array[k]->size>264) {
+		size_t* ptr = (void*)array[k];
+		array[k] = (node*)((char*)array[k]+264);
+		array[k]->size = *ptr-264;
+		*ptr=264;
+		stats.chunks_allocated += 1;
+		return ptr + 1;
+	} else {
+		k = mapnextpage();
+		return size264_malloc();
+	}
+}
+
+void* size520_malloc() {
+	static int k = 0;
+	if (array[k]==0) {
+		k = mapnextpage();
+	}
+	if (array[k]->size>520) {
+		size_t* ptr = (void*)array[k];
+		array[k] = (node*)((char*)array[k]+520);
+		array[k]->size = *ptr-520;
+		*ptr=520;
+		stats.chunks_allocated += 1;
+		return ptr + 1;
+	} else {
+		k = mapnextpage();
+		return size520_malloc();
+	}
+}
+
 /* 40, 64, 72, 136, 264, 520, 1032 */
 
 
@@ -295,32 +418,27 @@ pfree(void* ap)
   size_t *ptr = (size_t*)ap - 1;
   switch (*ptr) {
   case 32:
-  	size32_free(ptr);
+  	size_free(ptr);
   	break;
-  /*case 40:
-  	size40_free(ptr);
+  case 40:
+  	size_free(ptr);
   	break;
-  case 48:
+  case 63:
+  	size_free(ptr);
+  	break;
   case 72:
-  	size64_free(ptr);
+  	size_free(ptr);
   	break;
-  case 80:
-  	size72_free(ptr);
+  case 136:
+  	size_free(ptr);
   	break;
-  case 144:
-  	size136_free(ptr);
+  case 264:
+  	size_free(ptr);
   	break;
-  case 272:
-  	size264_free(ptr);
+  case 520:
+  	size_free(ptr);
   	break;
-  case 528:
-  	size520_free(ptr);
-  	break;
-  case 1040:
-  	size1032_free(ptr);
-  	break;*/
   default:
-  	//printf("size : %d\n", *ptr);
   	pfree_helper(ptr);
   	break;
   }
@@ -339,10 +457,13 @@ pmalloc(size_t nbytes)
   nbytes += sizeof(header);
   //printf("xmalloc(%ld)\n", nbytes);
   switch (nbytes) {
+  case 24:
+  	return size24_malloc();
+  	break;
   case 32:
   	return size32_malloc();
   	break;
-  /*case 40:
+  case 40:
   	return size40_malloc();
   	break;
   case 64:
@@ -360,9 +481,6 @@ pmalloc(size_t nbytes)
   case 520:
   	return size520_malloc();
   	break;
-  case 1032:
-  	return size1032_malloc();
-  	break;*/
   default:
   	return pmalloc_helper(nbytes);
   	break;
