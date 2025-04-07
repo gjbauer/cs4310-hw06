@@ -26,9 +26,9 @@ typedef struct header {
 pm_stats* pgetstats();
 void pprintstats();
 
+char *pstrdup(char *arg);
+
 void* pmalloc(size_t size);
 void pfree(void* item);
-void freeuapages(void);
-//void pnodemerge(void);
 
 #endif
