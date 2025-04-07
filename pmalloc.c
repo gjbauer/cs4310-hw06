@@ -10,21 +10,28 @@
 #include <sys/resource.h>
 #include <sys/mman.h>
 #include <stdint.h>
-#include <string.h>
+#include <math.h>
 
 bool __thread first_run = true;
 
 #include "pmalloc.h"
-#include "xmalloc.h"
 
 const size_t PAGE_SIZE = 4096;
-static pm_stats stats;  
+static pm_stats stats;
 static __thread node **array = NULL;
+static __thread node *powers[8];
+
+int
+pownec(int bytes) {
+	int i;
+	for(i=0; pow(4, i) < bytes; i++);
+	return i;
+}
 
 char *pstrdup(char *arg) {
         int i=0;
         for(; arg[i]!=0; i++);
-        char *buf = xmalloc(i+1);
+        char *buf = pmalloc(i+1);
         for(int j=0; j<=i; j++) buf[j]=arg[j];
         return buf;
 }
@@ -32,7 +39,6 @@ char *pstrdup(char *arg) {
 long free_list_length() {
     long length = 0;
     while (array[0]) {
-    	//printf("node at : %u\n", ((char*)array));
         length++;
         array[0] = array[0]->next;
     }
@@ -142,6 +148,7 @@ mapnextpage() {
 void
 pnodemerge(int list) {
 	node *curr = array[list];
+	node *prev = NULL;
 	while (curr) {
 		if ((node*)((char*)curr+curr->size)==(node*)((char*)curr->next)&&curr->size<PAGE_SIZE) {
 			if (curr->next) {
@@ -270,9 +277,10 @@ void* size24_malloc() {
 	if (array[k]==0) {
 		k = mapnextpage();
 	}
-	if (array[k]->size>32) {
+	if (array[k]->size>24) {
 		size_t* ptr = (void*)array[k];
-		climb(k, 24);
+		array[k] = (node*)((char*)array[k]+24);
+		array[k]->size = *ptr-24;
 		*ptr=24;
 		stats.chunks_allocated += 1;
 		return ptr + 1;
@@ -287,9 +295,10 @@ void* size32_malloc() {
 	if (array[k]==0) {
 		k = mapnextpage();
 	}
-	if (array[k]->size>40) {
+	if (array[k]->size>32) {
 		size_t* ptr = (void*)array[k];
-		climb(k, 32);
+		array[k] = (node*)((char*)array[k]+32);
+		array[k]->size = *ptr-32;
 		*ptr=32;
 		stats.chunks_allocated += 1;
 		return ptr + 1;
@@ -304,9 +313,10 @@ void* size40_malloc() {
 	if (array[k]==0) {
 		k = mapnextpage();
 	}
-	if (array[k]->size>48) {
+	if (array[k]->size>40) {
 		size_t* ptr = (void*)array[k];
-		climb(k, 40);
+		array[k] = (node*)((char*)array[k]+40);
+		array[k]->size = *ptr-40;
 		*ptr=40;
 		stats.chunks_allocated += 1;
 		return ptr + 1;
@@ -321,9 +331,10 @@ void* size64_malloc() {
 	if (array[k]==0) {
 		k = mapnextpage();
 	}
-	if (array[k]->size>72) {
+	if (array[k]->size>64) {
 		size_t* ptr = (void*)array[k];
-		climb(k, 64);
+		array[k] = (node*)((char*)array[k]+64);
+		array[k]->size = *ptr-64;
 		*ptr=64;
 		stats.chunks_allocated += 1;
 		return ptr + 1;
@@ -338,9 +349,10 @@ void* size72_malloc() {
 	if (array[k]==0) {
 		k = mapnextpage();
 	}
-	if (array[k]->size>80) {
+	if (array[k]->size>72) {
 		size_t* ptr = (void*)array[k];
-		climb(k, 72);
+		array[k] = (node*)((char*)array[k]+72);
+		array[k]->size = *ptr-72;
 		*ptr=72;
 		stats.chunks_allocated += 1;
 		return ptr + 1;
@@ -355,9 +367,10 @@ void* size136_malloc() {
 	if (array[k]==0) {
 		k = mapnextpage();
 	}
-	if (array[k]->size>144) {
+	if (array[k]->size>136) {
 		size_t* ptr = (void*)array[k];
-		climb(k, 136);
+		array[k] = (node*)((char*)array[k]+136);
+		array[k]->size = *ptr-136;
 		*ptr=136;
 		stats.chunks_allocated += 1;
 		return ptr + 1;
@@ -372,9 +385,10 @@ void* size264_malloc() {
 	if (array[k]==0) {
 		k = mapnextpage();
 	}
-	if (array[k]->size>272) {
+	if (array[k]->size>264) {
 		size_t* ptr = (void*)array[k];
-		climb(k, 264);
+		array[k] = (node*)((char*)array[k]+264);
+		array[k]->size = *ptr-264;
 		*ptr=264;
 		stats.chunks_allocated += 1;
 		return ptr + 1;
@@ -389,9 +403,10 @@ void* size520_malloc() {
 	if (array[k]==0) {
 		k = mapnextpage();
 	}
-	if (array[k]->size>528) {
+	if (array[k]->size>520) {
 		size_t* ptr = (void*)array[k];
-		climb(k, 528);
+		array[k] = (node*)((char*)array[k]+520);
+		array[k]->size = *ptr-520;
 		*ptr=520;
 		stats.chunks_allocated += 1;
 		return ptr + 1;
@@ -446,8 +461,8 @@ pmalloc(size_t nbytes)
   	for(int i=0;i<4096/sizeof(node*);i++) array[i]=0;
   	first_run = false;
   }
-  nbytes += sizeof(size_t);
-  printf("xmalloc(%ld)\n", nbytes);
+  nbytes += sizeof(header);
+  //printf("xmalloc(%ld)\n", nbytes);
   switch (nbytes) {
   case 24:
   	return size24_malloc();
@@ -479,17 +494,17 @@ pmalloc(size_t nbytes)
   }
 }
 
-void*
-prealloc(void* prev, size_t nn)
-{
-  size_t *new = xmalloc(nn);
-  size_t *ptr = (size_t*)prev;
-  
-  memset(new, 0, nn);
-  if (nn >= *ptr)
-  	memcpy(new, prev, *ptr);
-  
-  xfree(prev);
-  
-  return new;
-}
+
+/*int main() {
+    // Example usage of the custom malloc/free
+    void* p1 = pmalloc(100);
+    void* p2 = pmalloc(200);
+    pfree(p1);
+    pfree(p2);
+	printflist();
+	//pnodemerge();
+	//printflist();
+    // Print stats
+    pprintstats();
+    return 0;
+}*/
