@@ -111,31 +111,6 @@ addtolist(void* ptr, void* list) {
 	array[l] = block;
 }
 
-bool
-canbump(void* ptr, void* list, size_t size) {
-	return ((char*)ptr)==((char*)list+size) ? true : false;
-}
-
-bool
-canbumpd(void* ptr, void* list, size_t size) {
-	node *l = (node*)list;
-	return ((char*)ptr+size)==((char*)l+l->size) ? true : false;
-}
-
-void
-bump(void* list, size_t size) {
-	node *l = (node*)list;
-	int k = l->size+size;
-	l = (node*)((char*)list+size);
-	l->size=k;
-}
-
-void
-bumpd(void* list, size_t size) {
-	node *l = (node*)list;
-	l->size+=size;
-}
-
 int
 mapnextpage() {
 	int k = nextfreelist();
