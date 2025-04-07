@@ -52,16 +52,6 @@ free_scell(scell* xs)
 }
 
 static
-char*
-pstrdup(const char* text)
-{
-    size_t len = strlen(text);
-    char*  ss  = pmalloc(len) + 1;
-    strcpy(ss, text);
-    return ss;
-}
-
-static
 size_t
 smax(size_t aa, size_t bb)
 {
