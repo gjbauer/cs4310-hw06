@@ -21,11 +21,38 @@ static pm_stats stats;
 static __thread node **array = NULL;
 static __thread node *powers[8];
 
+void
+bucketpage() {
+	powers[7]=mmap(0, 4096, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_SHARED, -1, 0);
+	powers[7]->size = 4096;
+	stats.pages_mapped += 1;
+}
+
 int
 pownec(int bytes) {
 	int i;
-	for(i=0; pow(4, i) < bytes; i++);
+	for(i=0; pow(2, i) < bytes; i++);
 	return i;
+}
+
+int
+nextbucket(int pow) {
+	int i;
+	for(i=pow-4;powers[i]!=0&&(i<8); i++);
+	if(i==8) return -1;
+	return i;
+}
+
+void
+divide(int top, int dest) {
+}
+
+void*
+bucket_malloc(size_t size) {
+	int p = pownec(size);
+	int n = nextbucket(p);
+	if(n==-1) bucketpage();
+	else if (n!==p-4) divide(n, p);
 }
 
 char *pstrdup(char *arg) {
@@ -134,15 +161,6 @@ pnodemerge(int list) {
 		else {
 			curr = curr->next;
 		}
-	}
-}
-
-void
-freepages(void* list) {
-	node *temp = (node*)list;
-	if (temp->size==4096) {
-		list = temp->next;
-		munmap(temp, 4096);
 	}
 }
 
@@ -434,6 +452,7 @@ pmalloc(size_t nbytes)
   	personality(ADDR_NO_RANDOMIZE);
   	array=mmap(0, 4096, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_SHARED, -1, 0);
   	for(int i=0;i<4096/sizeof(node*);i++) array[i]=0;
+  	for(int i=0;i<8;i++)powers[i]=0;
   	first_run = false;
   }
   nbytes += sizeof(header);
@@ -469,17 +488,3 @@ pmalloc(size_t nbytes)
   }
 }
 
-
-/*int main() {
-    // Example usage of the custom malloc/free
-    void* p1 = pmalloc(100);
-    void* p2 = pmalloc(200);
-    pfree(p1);
-    pfree(p2);
-	printflist();
-	//pnodemerge();
-	//printflist();
-    // Print stats
-    pprintstats();
-    return 0;
-}*/
