@@ -21,6 +21,87 @@ static pm_stats stats;
 static __thread node **array = NULL;
 static __thread node *powers[8];
 
+int
+findlist(void* src, node **list) {
+	int i;
+	for(i=0;((uintptr_t)src/4096)!=((uintptr_t)list[i]/4096)&&list[i];i++);
+	return i;
+}
+
+int
+nextfreelist() {
+	int i;
+	for(i=0;array[i]!=0;i++);
+	return i;
+}
+
+node*
+walk(node *block, void *list) {
+	node *next = (node*)list;
+	while ((char*)block>(char*)next&&next) {
+		next = next->next;
+	}
+	return next;
+}
+
+void
+addtolist(void* ptr, node** list) {
+	int l = findlist(ptr, list);
+	node *block = (node*)ptr;
+	node *next = walk(block, list);
+	if (next) {
+		if (next->prev) {
+			block->prev=next->prev;
+			block->next=next;
+			block->prev->next=block;
+			block->next->prev=block;
+			return;
+		}
+	}
+	block->next = next;
+	array[l] = block;
+}
+
+int
+mapnextpage() {
+	int k = nextfreelist();
+	array[k]=mmap(0, 4096, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_SHARED, -1, 0);
+	array[k]->size = 4096;
+	stats.pages_mapped += 1;
+	return k;
+}
+
+void
+pnodemerge(int list) {
+	node *curr = array[list];
+	node *prev = NULL;
+	while (curr) {
+		if ((node*)((char*)curr+curr->size)==(node*)((char*)curr->next)&&curr->size<PAGE_SIZE) {
+			if (curr->next) {
+				curr->size+=curr->next->size;
+				curr->next=curr->next->next;
+			}
+		}
+		else {
+			curr = curr->next;
+		}
+	}
+}
+
+void
+climb(node *n, int bytes) {
+	int size=n->size-bytes;
+	n = (node*)((char*)n+bytes);
+	n->size=size;
+}
+
+node*
+pop(node* list) {
+	node *block = list;
+	list = list->next;
+	return block;
+}
+
 void
 bucketpage() {
 	powers[7]=mmap(0, 4096, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_SHARED, -1, 0);
@@ -45,14 +126,22 @@ nextbucket(int pow) {
 
 void
 divide(int top, int dest) {
+	if (top==dest) return;
+	node *k = pop(powers[top]);
+	node *f = k;
+	int s = pow(2, top+3);
+	climb(k, s);
+	f->next=k;
+	powers[top-1]=f;
+	divide(top-1, dest);
 }
 
 void*
 bucket_malloc(size_t size) {
 	int p = pownec(size);
 	int n = nextbucket(p);
-	if(n==-1) bucketpage();
-	else if (n!==p-4) divide(n, p);
+	if(n==-1) n--, bucketpage();
+	else if (n!=p-4) divide(n, p);
 }
 
 char *pstrdup(char *arg) {
@@ -97,91 +186,17 @@ static size_t div_up(size_t xx, size_t yy) {
     }
 }
 
-int
-findlist(void *list) {
-	int i;
-	for(i=0;((uintptr_t)list/4096)!=((uintptr_t)array[i]/4096)&&array[i];i++);
-	return i;
-}
-
-int
-nextfreelist() {
-	int i;
-	for(i=0;array[i]!=0;i++);
-	return i;
-}
-
-node*
-walk(node *block, void *list) {
-	node *next = (node*)list;
-	while ((char*)block>(char*)next&&next) {
-		next = next->next;
-	}
-	return next;
-}
-
-void
-addtolist(void* ptr, void* list) {
-	int l = findlist(list);
-	node *block = (node*)ptr;
-	node *next = walk(block, list);
-	if (next) {
-		if (next->prev) {
-			block->prev=next->prev;
-			block->next=next;
-			block->prev->next=block;
-			block->next->prev=block;
-			return;
-		}
-	}
-	block->next = next;
-	array[l] = block;
-}
-
-int
-mapnextpage() {
-	int k = nextfreelist();
-	array[k]=mmap(0, 4096, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_SHARED, -1, 0);
-	array[k]->size = 4096;
-	stats.pages_mapped += 1;
-	return k;
-}
-
-void
-pnodemerge(int list) {
-	node *curr = array[list];
-	node *prev = NULL;
-	while (curr) {
-		if ((node*)((char*)curr+curr->size)==(node*)((char*)curr->next)&&curr->size<PAGE_SIZE) {
-			if (curr->next) {
-				curr->size+=curr->next->size;
-				curr->next=curr->next->next;
-			}
-		}
-		else {
-			curr = curr->next;
-		}
-	}
-}
-
 void pfree_helper(void* item) {
     stats.chunks_freed += 1;
     node* block = (node*)item;
-    int k = findlist(item);
+    int k = findlist(item, array);
     if (block->size<PAGE_SIZE) {
-	addtolist(item, array[k]);
-	pnodemerge(k);	// Merge
+	addtolist(item, array);
+	//pnodemerge(k);	// Merge
     } else {
     	stats.pages_unmapped+=block->size/PAGE_SIZE;
     	munmap(&block, block->size);
     }
-}
-
-void
-climb(int k, int bytes) {
-	int size=array[k]->size-bytes;
-	array[k] = (node*)((char*)array[k]+bytes);
-	array[k]->size=size;
 }
 
 void* pmalloc_helper(size_t size) {
@@ -203,13 +218,13 @@ void* pmalloc_helper(size_t size) {
             if (curr->size > size) {	// Found a large enough block
                 if (prev) {
                     if (curr->next==NULL&&curr->size-size<=sizeof(node*)) k = mapnextpage();
-                    else if (curr->next==NULL) climb(k, size);
+                    else if (curr->next==NULL) climb(array[k], size);
 		    else prev->next = curr->next;
                 } else {
                     if (curr->size-size<=sizeof(node*)) k = mapnextpage();
                     else {
                     	ptr = (size_t*)array[k];
-                    	climb(k, size);
+                    	climb(array[k], size);
                     	*ptr=size;
                     }
                 }
@@ -224,7 +239,7 @@ void* pmalloc_helper(size_t size) {
         k = mapnextpage();
         
         ptr = (size_t*)array[k];
-	climb(k, size);
+	climb(array[k], size);
 	*ptr=size;
 	
 	stats.pages_mapped += 1;
@@ -260,9 +275,9 @@ void* pmalloc_helper(size_t size) {
 
 void size_free(void* ptr) {
 	stats.chunks_freed += 1;
-	int k = findlist(ptr);
-	addtolist(ptr, array[k]);
-	pnodemerge(k);
+	int k = findlist(ptr, array);
+	addtolist(ptr, array);
+	//pnodemerge(k);
 }
 
 void* size24_malloc() {
