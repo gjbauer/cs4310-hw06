@@ -1,7 +1,7 @@
 
 SRCS := $(wildcard *.c)
 BINS := $(SRCS:.c=)
-CFLAGS := -g -std=gnu99 -I..
+CFLAGS := -g -std=gnu99 -I.. -lm
 
 all: $(BINS)
 
