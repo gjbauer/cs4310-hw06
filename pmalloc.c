@@ -151,11 +151,17 @@ divide(int top, int dest) {
 	if (top==dest) return;
 	else {
 		node *k = powers[top];
+		powers[top]=powers[top]->next;
 		int s = pow(2, top+4);
-		pclimb(top, s);
-		k->next=powers[top];
+		size_t* b = (size_t*)k + s;
+		node *l = (node*)b;
+		
+		l->size=s;
+		k->size=s;
+		
+		k->next=l;
 		powers[top-1]=k;
-		powers[top]=NULL;
+		
 		divide(top-1, dest);
 	}
 }
@@ -517,7 +523,8 @@ pmalloc(size_t nbytes)
   	first_run = false;
   }
   nbytes += sizeof(size_t);
-  //printf("xmalloc(%ld)\n", nbytes);
+  if (nbytes<24) nbytes=24;
+  printf("xmalloc(%ld)\n", nbytes);
   switch (nbytes) {
   case 24:
   	return size24_malloc();
