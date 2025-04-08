@@ -10,27 +10,21 @@
 #include <sys/resource.h>
 #include <sys/mman.h>
 #include <stdint.h>
-#include <math.h>
+#include <string.h>
 
 bool __thread first_run = true;
 
 #include "pmalloc.h"
 
-const size_t PAGE_SIZE = 4096;
+const size_t PAGE_SIZE = 8192;
+size_t mul = 1;
 static pm_stats stats;
-static __thread node **array = NULL;
+static __thread node **array;
 
 int
 findlist(void* src) {
 	int i;
 	for(i=0;((uintptr_t)src/4096)!=((uintptr_t)array[i]/4096)&&array[i];i++);
-	return i;
-}
-
-int
-pownec(int bytes) {
-	int i;
-	for(i=0; pow(2, i) < bytes; i++);
 	return i;
 }
 
@@ -47,7 +41,6 @@ walkp(node *block, void *list) {
 	node *prev = NULL;
 	if (block==NULL) {
 		while (next->next>0x0) {
-			prev = next;
 			next = next->next;
 		}
 	}
@@ -60,50 +53,72 @@ walkp(node *block, void *list) {
 	return prev;
 }
 
-void size_free(void* ptr) {
-	node* point = (node*)(ptr);
-	int k = findlist(ptr);
-	
-	point->next = array[k];
-	array[k] = (node*)point;
+void
+addtolist(void* ptr, node** list) {
+	int l = findlist(ptr);
+	node *block = (node*)ptr;
+	node *prev = walkp(block, list);
+	if (prev) {
+		block->next=prev->next;
+		prev->next=block;
+		return;
+	} else if (array[l]) {
+		block->next=array[l];
+		array[l]=block;
+	}
+	else array[l] = block;
 }
 
-int size_setup(int p) {
+int
+morecore() {
 	int k = nextfreelist();
-	array[k] = mmap(0, 4096, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_SHARED, -1, 0);
-	node *n;
-	for (int ii = 0; ii < 4096/pow(2,p+4); ii+=pow(2,p+4)) {
-		n = (node*)((char*)array[k]+(int)pow(2,p+4));
-		n->next = array[k];
-		n->size = pow(2,p+4);
-		array[k] = n;
-	}
+	array[k] = mmap(0, PAGE_SIZE, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_SHARED, -1, 0);
 	stats.pages_mapped += 1;
+	array[k]->size=PAGE_SIZE;
 	return k;
 }
 
-void* size_malloc(int p) {
-	static int k = 0;
-	if (array[k]==0) {
-		k = size_setup(p);
-	}
-	size_t* ptr = (void*)array[k];
-	array[k] = array[k]->next;
-	return ptr + 1;
+int
+lesscore() {
+	int k = nextfreelist();
+	array[k] = mmap(0, PAGE_SIZE/2, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_SHARED, -1, 0);
+	stats.pages_mapped += 1;
+	array[k]->size=PAGE_SIZE;
+	return k;
+}
+
+void
+push(int k, int size) {
+	size_t s = array[k]->size;
+	array[k] = (node*)((char*)array[k]+size);
+ 	array[k]->size = s - size;
 }
 
 void*
 bucket_malloc(size_t size) {
-	stats.chunks_allocated+=1;
-	int p = pownec(size)-4;
-	return size_malloc(p);
+	static int k = -1;
+	if (k == -1) {
+		k = morecore();
+	}
+	
+	int i=0;
+	for(; array[i] && i<=k;i++) {
+		if(array[i]->size>=size+sizeof(node*)) {
+			size_t *ptr = (size_t*)array[i];
+			push(i, size);
+			*ptr = size;
+			stats.chunks_allocated+=1;
+			return ptr + 1;
+		}
+	}
+	k = morecore();
+	return bucket_malloc(size);
 }
 
 void
 bucket_free(void *ptr) {
 	stats.chunks_freed += 1;
-	node *k = (node*)ptr;
-	size_free(k);
+	addtolist(ptr, array);
 }
 
 char *pstrdup(char *arg) {
@@ -125,12 +140,12 @@ long free_list_length() {
 }
 
 pm_stats* pgetstats() {
-    stats.free_length = free_list_length();
+    //stats.free_length = free_list_length();
     return &stats;
 }
 
 void pprintstats() {
-    stats.free_length = free_list_length();
+    //stats.free_length = free_list_length();
     fprintf(stderr, "\n== Panther Malloc Stats ==\n");
     fprintf(stderr, "Mapped:   %ld\n", stats.pages_mapped);
     fprintf(stderr, "Unmapped: %ld\n", stats.pages_unmapped);
@@ -151,7 +166,7 @@ static size_t div_up(size_t xx, size_t yy) {
 void*
 big_malloc(size_t size) {
     // Handle large allocation (>= 1 page)
-    size_t pages_needed = div_up(size, PAGE_SIZE);
+    size_t pages_needed = div_up(size, 4096);
     size_t* new_block = mmap(0, pages_needed * PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
     if (new_block == MAP_FAILED) {
         perror("mmap failed");
@@ -159,7 +174,7 @@ big_malloc(size_t size) {
     }
     stats.pages_mapped += pages_needed;
     stats.chunks_allocated += 1;
-    *new_block = pages_needed * PAGE_SIZE;
+    *new_block = pages_needed * 4096;
     return new_block + 1; // Return pointer after size header
 }
 
@@ -167,7 +182,7 @@ void
 big_free(void *ptr) {
 	size_t *p = (size_t*)ptr;
 	stats.chunks_freed += 1;
-	stats.pages_unmapped+=*p/PAGE_SIZE;
+	stats.pages_unmapped+=*p/4096;
 	munmap(ptr, *p);
 }
 
@@ -197,31 +212,30 @@ pfree_helper(void *ptr) {
 
 // (uintptr_t)a / 4096 == ( uintptr_t ) b / 4096
 
-/*void size_free(void* ptr) {
+void size_free(void* ptr) {
 	stats.chunks_freed += 1;
 	//int k = findlist(ptr, array);
 	addtolist(ptr, array);
 	//pnodemerge(k);
-}*/
+}
 
-
-/*void* size32_malloc() {
-	static int k = 0;
-	if (array[k]==0) {
-		k = mapnextpage();
-	}
-	if (array[k]->size>32) {
+void* size24_malloc() {
+	static int k = -1;
+	static int pos = 0;
+	if (pos>24) {
 		size_t* ptr = (void*)array[k];
-		array[k] = (node*)((char*)array[k]+32);
-		array[k]->size = *ptr-32;
-		*ptr=32;
+		array[k] = (node*)((char*)array[k]+24);
+		array[k]->size = *ptr-24;
+		pos -= 24;
+		*ptr=24;
 		stats.chunks_allocated += 1;
 		return ptr + 1;
 	} else {
-		k = mapnextpage();
-		return size32_malloc();
+		k = lesscore();
+		pos = 4096;
+		return size24_malloc();
 	}
-}*/
+}
 
 /* 40, 64, 72, 136, 264, 520, 1032 */
 
@@ -231,9 +245,15 @@ pfree(void* ap)
 {
   size_t *ptr = (size_t*)ap - 1;
   //printf("xfree(%ld)\n", *ptr);
-  size_t *p = (size_t*)ptr;
-  if(*p>PAGE_SIZE) big_free(ptr);
-  else bucket_free(ptr);
+  switch (*ptr) {
+  case 24:
+  	return size_free(ptr);
+  	break;
+  default:
+  	if(*ptr>PAGE_SIZE) big_free(ptr);
+  	else bucket_free(ptr);
+  	break;
+  }
 }
 
 
@@ -242,14 +262,15 @@ pmalloc(size_t nbytes)
 {
   if (first_run == true) {
   	personality(ADDR_NO_RANDOMIZE);
-  	array=mmap(0, 4096, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_SHARED, -1, 0);
-  	for(int i=0;i<4096/sizeof(node*);i++) array[i]=0;
+  	array=mmap(0, PAGE_SIZE, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_SHARED, -1, 0);
   	first_run = false;
   }
   nbytes += sizeof(size_t);
-  if (nbytes<24) nbytes=24;
   //printf("xmalloc(%ld)\n", nbytes);
   switch (nbytes) {
+  case 24:
+  	return size24_malloc();
+  	break;
   default:
   	return pmalloc_helper(nbytes);
   	break;
