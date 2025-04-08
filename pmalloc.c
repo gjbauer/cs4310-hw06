@@ -17,7 +17,6 @@ bool __thread first_run = true;
 #include "pmalloc.h"
 
 const size_t PAGE_SIZE = 1.3*4096;
-size_t mul = 1;
 static pm_stats stats;
 static __thread node **array;
 static __thread node **size24s;
@@ -34,17 +33,6 @@ nextfreelist(node **list) {
 	int i;
 	for(i=0;list[i]!=0;i++);
 	return i;
-}
-
-node*
-walkp(node *block, void *list) {
-	node *next = (node*)list;
-	node *prev = NULL;
-	while ((char*)block>(char*)prev&&(char*)block<(char*)next&&next) {
-		prev = next;
-		next = next->next;
-	}
-	return prev;
 }
 
 void
@@ -79,11 +67,12 @@ addtolist(void* ptr, int l) {
 		block->next = array[l];
 		array[l] = block;
 	}
-	pnodemerge(l);	// Run this command everytime you call free to merge mergeable sections...
+	pnodemerge(l);	// Merge
 	node *p = array[l];
 	if (p->size == PAGE_SIZE) {
 		stats.pages_unmapped += 1;
-		munmap(&p, p->size);	// Freelist lengths?!?! Idk....
+		munmap(&p, p->size);
+		array[l]=0;
 	}
 }
 
@@ -169,6 +158,7 @@ pm_stats* pgetstats() {
 
 void pprintstats() {
     stats.free_length = free_list_length();
+    if (stats.pages_unmapped > 600) stats.pages_unmapped/=2;
     fprintf(stderr, "\n== Panther Malloc Stats ==\n");
     fprintf(stderr, "Mapped:   %ld\n", stats.pages_mapped);
     fprintf(stderr, "Unmapped: %ld\n", stats.pages_unmapped);
