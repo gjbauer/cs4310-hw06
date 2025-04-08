@@ -39,23 +39,66 @@ node*
 walkp(node *block, void *list) {
 	node *next = (node*)list;
 	node *prev = NULL;
-	if (block==NULL) {
-		while (next->next>0x0) {
-			next = next->next;
-		}
-	}
-	else {
-		while ((char*)block>(char*)next&&next) {
-			prev = next;
-			next = next->next;
-		}
+	while ((char*)block>(char*)prev&&(char*)block<(char*)next&&next) {
+		prev = next;
+		next = next->next;
 	}
 	return prev;
 }
 
 void
+pnodemerge(int list) {
+	//printf("l : %d\n", list);
+	node *curr = array[list];
+	node *prev = NULL;
+	while (curr) {
+		if ((node*)((char*)curr+curr->size)==(node*)((char*)curr->next)&&curr->size<PAGE_SIZE) {
+			if (curr->next) {
+				//printf("removing node.\n");
+				curr->size+=curr->next->size;
+				curr->next=curr->next->next;
+			}
+		}
+		else {
+			//printf("next.\n");
+			curr = curr->next;
+		}
+	}
+}
+
+void
+addtolist(void* ptr, node** list) {
+	volatile int l = findlist(ptr);
+	//printf("l : %d\n", l);
+	node *block = (node*)ptr;
+	node *curr = array[l];
+	node *prev = NULL;
+	while ((void*)block>(void*)curr&&curr) {	// Kepp the blocks sorted by where they appear in memory ;)
+		prev = curr;
+		curr = curr->next;
+	}
+	if (prev) {
+		prev->next = block;
+		block->next = curr;
+	}
+	else {
+		block->next = array[l];
+		array[l] = block;
+	}
+	pnodemerge(l);	// Run this command everytime you call free to merge mergeable sections...
+	node *p = array[l];
+	//printf("%d\n", p->size);
+	if (4096 / p->size <= 1) {
+		munmap(&p, p->size);	// Freelist lengths?!?! Idk....
+		//printf("unmapping.\n");
+		//array[l]=0;
+	}
+}
+
+/*void
 addtolist(void* ptr, node** list) {
 	int l = findlist(ptr);
+	//printf("l : %d\n", l);
 	node *block = (node*)ptr;
 	node *prev = walkp(block, list);
 	if (prev) {
@@ -67,7 +110,8 @@ addtolist(void* ptr, node** list) {
 		array[l]=block;
 	}
 	else array[l] = block;
-}
+	pnodemerge(l);
+}*/
 
 int
 morecore() {
@@ -83,7 +127,7 @@ lesscore() {
 	int k = nextfreelist();
 	array[k] = mmap(0, PAGE_SIZE/2, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_SHARED, -1, 0);
 	stats.pages_mapped += 1;
-	array[k]->size=PAGE_SIZE;
+	array[k]->size=PAGE_SIZE/2;
 	return k;
 }
 
@@ -115,6 +159,15 @@ bucket_malloc(size_t size) {
 	return bucket_malloc(size);
 }
 
+long list_length(node *k) {
+    long length = 0;
+    while (k) {
+        length++;
+        k = k->next;
+    }
+    return length;
+}
+
 void
 bucket_free(void *ptr) {
 	stats.chunks_freed += 1;
@@ -129,23 +182,23 @@ char *pstrdup(char *arg) {
         return buf;
 }
 
+
 long free_list_length() {
     long length = 0;
-    while (array[0]) {
-        length++;
-        array[0] = array[0]->next;
+    for (int i=0;array[i]; i++) {
+        length+=list_length(array[i]);
     }
     stats.free_length += length;
     return length;
 }
 
 pm_stats* pgetstats() {
-    //stats.free_length = free_list_length();
+    stats.free_length = free_list_length();
     return &stats;
 }
 
 void pprintstats() {
-    //stats.free_length = free_list_length();
+    stats.free_length = free_list_length();
     fprintf(stderr, "\n== Panther Malloc Stats ==\n");
     fprintf(stderr, "Mapped:   %ld\n", stats.pages_mapped);
     fprintf(stderr, "Unmapped: %ld\n", stats.pages_unmapped);
@@ -195,6 +248,7 @@ pmalloc_helper(size_t size) {
 void
 pfree_helper(void *ptr) {
 	size_t *p = (size_t*)ptr;
+	printf("%d\n", *p);
 	if(*p>PAGE_SIZE) big_free(ptr);
 	else bucket_free(ptr);
 }
@@ -214,8 +268,13 @@ pfree_helper(void *ptr) {
 
 void size_free(void* ptr) {
 	stats.chunks_freed += 1;
-	//int k = findlist(ptr, array);
+	//int k = findlist(ptr);
+	//printf("%d\n", k);
 	addtolist(ptr, array);
+	//node *n = (node*)ptr;
+	//n->next=array[k];
+	//array[k]=n;
+	//addtolist(ptr, array);
 	//pnodemerge(k);
 }
 
