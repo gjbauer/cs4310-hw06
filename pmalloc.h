@@ -15,10 +15,12 @@ typedef struct pm_stats {
 typedef struct node {
 	size_t size;
 	struct node *next;
+	size_t _unused;
 } node;
 
 typedef struct header {
 	size_t size;
+	size_t _unused;
 } header;
 
 pm_stats* pgetstats();

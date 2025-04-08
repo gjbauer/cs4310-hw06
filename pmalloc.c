@@ -16,7 +16,7 @@ bool __thread first_run = true;
 
 #include "pmalloc.h"
 
-const size_t PAGE_SIZE = 8192;
+const size_t PAGE_SIZE = 1.3*4096;
 size_t mul = 1;
 static pm_stats stats;
 static __thread node **array;
@@ -147,7 +147,7 @@ bucket_malloc(size_t size) {
 	
 	int i=0;
 	for(; array[i] && i<=k;i++) {
-		if(array[i]->size>=size+sizeof(node*)) {
+		if(array[i]->size>=size) {
 			size_t *ptr = (size_t*)array[i];
 			push(i, size);
 			*ptr = size;
