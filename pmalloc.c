@@ -48,28 +48,22 @@ walkp(node *block, void *list) {
 
 void
 pnodemerge(int list) {
-	//printf("l : %d\n", list);
 	node *curr = array[list];
 	node *prev = NULL;
 	while (curr) {
 		if ((node*)((char*)curr+curr->size)==(node*)((char*)curr->next)&&curr->size<PAGE_SIZE) {
 			if (curr->next) {
-				//printf("removing node.\n");
 				curr->size+=curr->next->size;
 				curr->next=curr->next->next;
 			}
 		}
-		else {
-			//printf("next.\n");
-			curr = curr->next;
-		}
+		else curr = curr->next;
 	}
 }
 
 void
 addtolist(void* ptr, node** list) {
 	volatile int l = findlist(ptr);
-	//printf("l : %d\n", l);
 	node *block = (node*)ptr;
 	node *curr = array[l];
 	node *prev = NULL;
@@ -87,31 +81,11 @@ addtolist(void* ptr, node** list) {
 	}
 	pnodemerge(l);	// Run this command everytime you call free to merge mergeable sections...
 	node *p = array[l];
-	//printf("%d\n", p->size);
-	if (4096 / p->size <= 1) {
+	if (p->size - PAGE_SIZE == 0) {
+		stats.pages_unmapped += 1;
 		munmap(&p, p->size);	// Freelist lengths?!?! Idk....
-		//printf("unmapping.\n");
-		//array[l]=0;
 	}
 }
-
-/*void
-addtolist(void* ptr, node** list) {
-	int l = findlist(ptr);
-	//printf("l : %d\n", l);
-	node *block = (node*)ptr;
-	node *prev = walkp(block, list);
-	if (prev) {
-		block->next=prev->next;
-		prev->next=block;
-		return;
-	} else if (array[l]) {
-		block->next=array[l];
-		array[l]=block;
-	}
-	else array[l] = block;
-	pnodemerge(l);
-}*/
 
 int
 morecore() {
@@ -268,14 +242,7 @@ pfree_helper(void *ptr) {
 
 void size_free(void* ptr) {
 	stats.chunks_freed += 1;
-	//int k = findlist(ptr);
-	//printf("%d\n", k);
 	addtolist(ptr, array);
-	//node *n = (node*)ptr;
-	//n->next=array[k];
-	//array[k]=n;
-	//addtolist(ptr, array);
-	//pnodemerge(k);
 }
 
 void* size24_malloc() {
@@ -335,20 +302,4 @@ pmalloc(size_t nbytes)
   	break;
   }
 }
-
-/*int main() {
-    // Example usage of the custom malloc/free
-    char* p1 = pmalloc(100);
-    void* p2 = pmalloc(200);
-    for(int i=0; i<50; i++) p1[i]='h';
-    printf("%s\n", p1);
-    //pfree(p1);
-    //pfree(p2);
-	//printflist();
-	//pnodemerge();
-	//printflist();
-    // Print stats
-    pprintstats();
-    return 0;
-}*/
 
