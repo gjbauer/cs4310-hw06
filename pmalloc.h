@@ -34,6 +34,12 @@ void pfree(void* item);
 // 0xFFFFFFFFFFFFFFFF
 
 #define lowerbits(x) (x & 0xFFFFFFFF)
-#define higherbits(x) (x & -(0xFFFFFFFF))
+#define tolowerbits(x) ((x >> 16) & 0xFFFFFFFF)
+
+#define higherbits(x) (x & 0xFFFFFFFF00000000)
+#define tohigherbits(x) (x << 16)
+
+#define setlowerbits(x, y) ((x & 0xFFFFFFFF00000000) | (y & 0xFFFFFFFF))
+#define sethigherbits(x, y) ((x & 0xFFFFFFFF) | (y << 16))
 
 #endif
