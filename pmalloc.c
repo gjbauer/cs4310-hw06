@@ -105,7 +105,7 @@ m_malloc(size_t size) {
 			node *ptr = array[i];
 			push(i, size);
 			ptr->size = size;
-			ptr->k = setlowerbits(0, k);
+			ptr->k = k;
 			stats.chunks_allocated+=1;
 			return (size_t*)ptr + 2;
 		}
@@ -127,7 +127,7 @@ void
 m_free(void *ptr) {
 	stats.chunks_freed += 1;
 	node *p = (node*)ptr;
-	addtolist(ptr, lowerbits(p->k));
+	addtolist(ptr, p->k);
 }
 
 char *pstrdup(char *arg) {
