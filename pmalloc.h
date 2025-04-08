@@ -14,12 +14,13 @@ typedef struct pm_stats {
 
 typedef struct node {
 	size_t size;
+	size_t k;
 	struct node *next;
-	size_t _unused;
 } node;
 
 typedef struct header {
 	size_t size;
+	size_t k;
 } header;
 
 pm_stats* pgetstats();
@@ -29,5 +30,10 @@ char *pstrdup(char *arg);
 
 void* pmalloc(size_t size);
 void pfree(void* item);
+
+// 0xFFFFFFFFFFFFFFFF
+
+#define lowerbits(x) (x & 0xFFFFFFFF)
+#define higherbits(x) (x & -(0xFFFFFFFF))
 
 #endif

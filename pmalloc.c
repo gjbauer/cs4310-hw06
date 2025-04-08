@@ -52,7 +52,7 @@ pnodemerge(int list) {
 	node *curr = array[list];
 	node *prev = NULL;
 	while (curr) {
-		if ((node*)((char*)curr+curr->size)==(node*)((char*)curr->next)&&curr->size<PAGE_SIZE) {
+		if (((char*)curr+curr->size)==((char*)curr->next)&&curr->size<PAGE_SIZE) {
 			if (curr->next) {
 				curr->size+=curr->next->size;
 				curr->next=curr->next->next;
@@ -63,8 +63,7 @@ pnodemerge(int list) {
 }
 
 void
-addtolist(void* ptr, node** list) {
-	volatile int l = findlist(ptr, array);
+addtolist(void* ptr, int l) {
 	node *block = (node*)ptr;
 	node *curr = array[l];
 	node *prev = NULL;
@@ -82,7 +81,7 @@ addtolist(void* ptr, node** list) {
 	}
 	pnodemerge(l);	// Run this command everytime you call free to merge mergeable sections...
 	node *p = array[l];
-	if (p->size - PAGE_SIZE == 0) {
+	if (p->size == PAGE_SIZE) {
 		stats.pages_unmapped += 1;
 		munmap(&p, p->size);	// Freelist lengths?!?! Idk....
 	}
@@ -114,11 +113,14 @@ m_malloc(size_t size) {
 	int i=0;
 	for(; array[i] && i<=k;i++) {
 		if(array[i]->size>=size) {
-			size_t *ptr = (size_t*)array[i];
+			node *ptr = array[i];
 			push(i, size);
-			*ptr = size;
+			ptr->size = size;
+			ptr->k = k;
+			printf("k : %d\n", k);
+			printf("l k : %d\n", lowerbits(k));
 			stats.chunks_allocated+=1;
-			return ptr + 1;
+			return (size_t*)ptr + 2;
 		}
 	}
 	k = morecore();
@@ -137,7 +139,8 @@ long list_length(node *k) {
 void
 m_free(void *ptr) {
 	stats.chunks_freed += 1;
-	addtolist(ptr, array);
+	node *p = (node*)ptr;
+	addtolist(ptr, p->k);
 }
 
 char *pstrdup(char *arg) {
@@ -197,7 +200,7 @@ big_malloc(size_t size) {
     stats.pages_mapped += pages_needed;
     stats.chunks_allocated += 1;
     *new_block = pages_needed * 4096;
-    return new_block + 1; // Return pointer after size header
+    return new_block + 2; // Return pointer after size header
 }
 
 void
@@ -217,7 +220,6 @@ pmalloc_helper(size_t size) {
 void
 pfree_helper(void *ptr) {
 	size_t *p = (size_t*)ptr;
-	printf("%d\n", *p);
 	if(*p>PAGE_SIZE) big_free(ptr);
 	else m_free(ptr);
 }
@@ -292,19 +294,16 @@ void size_free(void* ptr) {
 
 void* size24_malloc() {
 	static int k = -1;
-	static int count = 1;
 	size_t* ptr;
-	if (k==-1||count==4096/24) {
+	if (k==-1) {
 		k = lesscore();
-		count = 0;
 	}
 	ptr = (size_t*)size24s[k];
-	if (size24s[k]->size>32) {
+	if (size24s[k]->size>48) {
 		size24s[k] = (node*)((char*)size24s[k]+24);
 		size24s[k]->size = *ptr-24;
 		*ptr=24;
 		stats.chunks_allocated += 1;
-		count++;
 		return ptr + 1;
 	}
 	k = lesscore();
@@ -324,6 +323,7 @@ pfree(void* ap)
   	return size_free(ptr);
   	break;
   default:
+  	*ptr--;
   	if(*ptr>PAGE_SIZE) big_free(ptr);
   	else m_free(ptr);
   	break;
