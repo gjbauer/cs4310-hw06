@@ -113,7 +113,7 @@ push(int k, int size) {
 }
 
 void*
-bucket_malloc(size_t size) {
+m_malloc(size_t size) {
 	static int k = -1;
 	if (k == -1) {
 		k = morecore();
@@ -143,7 +143,7 @@ long list_length(node *k) {
 }
 
 void
-bucket_free(void *ptr) {
+m_free(void *ptr) {
 	stats.chunks_freed += 1;
 	addtolist(ptr, array);
 }
@@ -215,7 +215,7 @@ big_free(void *ptr) {
 
 void*
 pmalloc_helper(size_t size) {
-	if (size<=PAGE_SIZE) return bucket_malloc(size);
+	if (size<=PAGE_SIZE) return m_malloc(size);
 	else return big_malloc(size);
 }
 
@@ -224,7 +224,7 @@ pfree_helper(void *ptr) {
 	size_t *p = (size_t*)ptr;
 	printf("%d\n", *p);
 	if(*p>PAGE_SIZE) big_free(ptr);
-	else bucket_free(ptr);
+	else m_free(ptr);
 }
 
 /*void printflist() {
@@ -258,7 +258,7 @@ void* size24_malloc() {
 		return ptr + 1;
 	} else {
 		k = lesscore();
-		pos = 4096;
+		pos = PAGE_SIZE/2;
 		return size24_malloc();
 	}
 }
