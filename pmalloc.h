@@ -20,7 +20,6 @@ typedef struct node {
 
 typedef struct header {
 	size_t size;
-	size_t _unused;
 } header;
 
 pm_stats* pgetstats();

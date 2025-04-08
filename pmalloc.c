@@ -20,18 +20,19 @@ const size_t PAGE_SIZE = 1.3*4096;
 size_t mul = 1;
 static pm_stats stats;
 static __thread node **array;
+static __thread node **size24s;
 
 int
-findlist(void* src) {
+findlist(void* src, node **list) {
 	int i;
-	for(i=0;((uintptr_t)src/4096)!=((uintptr_t)array[i]/4096)&&array[i];i++);
+	for(i=0;((uintptr_t)src/4096)!=((uintptr_t)list[i]/4096)&&list[i];i++);
 	return i;
 }
 
 int
-nextfreelist() {
+nextfreelist(node **list) {
 	int i;
-	for(i=0;array[i]!=0;i++);
+	for(i=0;list[i]!=0;i++);
 	return i;
 }
 
@@ -63,7 +64,7 @@ pnodemerge(int list) {
 
 void
 addtolist(void* ptr, node** list) {
-	volatile int l = findlist(ptr);
+	volatile int l = findlist(ptr, array);
 	node *block = (node*)ptr;
 	node *curr = array[l];
 	node *prev = NULL;
@@ -89,19 +90,10 @@ addtolist(void* ptr, node** list) {
 
 int
 morecore() {
-	int k = nextfreelist();
+	int k = nextfreelist(array);
 	array[k] = mmap(0, PAGE_SIZE, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_SHARED, -1, 0);
 	stats.pages_mapped += 1;
 	array[k]->size=PAGE_SIZE;
-	return k;
-}
-
-int
-lesscore() {
-	int k = nextfreelist();
-	array[k] = mmap(0, PAGE_SIZE/2, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_SHARED, -1, 0);
-	stats.pages_mapped += 1;
-	array[k]->size=PAGE_SIZE/2;
 	return k;
 }
 
@@ -130,7 +122,7 @@ m_malloc(size_t size) {
 		}
 	}
 	k = morecore();
-	return bucket_malloc(size);
+	return m_malloc(size);
 }
 
 long list_length(node *k) {
@@ -161,6 +153,9 @@ long free_list_length() {
     long length = 0;
     for (int i=0;array[i]; i++) {
         length+=list_length(array[i]);
+    }
+    for (int i=0;size24s[i]; i++) {
+        length+=list_length(size24s[i]);
     }
     stats.free_length += length;
     return length;
@@ -240,27 +235,80 @@ pfree_helper(void *ptr) {
 
 // (uintptr_t)a / 4096 == ( uintptr_t ) b / 4096
 
+int
+lesscore() {
+	int k = nextfreelist(size24s);
+	size24s[k] = mmap(0, 4096, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_SHARED, -1, 0);
+	stats.pages_mapped += 1;
+	size24s[k]->size=4096;
+	return k;
+}
+
+void
+merge24s(int k) {
+	node *curr = size24s[k];
+	node *prev = NULL;
+	while (curr) {
+		if (((uintptr_t)curr+curr->size)==((uintptr_t)curr->next)&&((uintptr_t)curr/4096)==((uintptr_t)curr->next/4096)&&curr->size<4096&&curr&&curr->next) {
+			curr->size+=curr->next->size;
+			curr->next=curr->next->next;
+		}
+		else curr = curr->next;
+	}
+}
+
+void
+addto24s(void* ptr) {
+	int k = findlist(ptr, size24s);
+	node *block = (node*)ptr;
+	node *curr = size24s[k];
+	node *prev = NULL;
+	while ((void*)block>(void*)curr&&curr) {	// Kepp the blocks sorted by where they appear in memory ;)
+		prev = curr;
+		curr = curr->next;
+	}
+	if (prev) {
+		prev->next = block;
+		block->next = curr;
+	}
+	else {
+		block->next = size24s[k];
+		size24s[k] = block;
+	}
+	merge24s(k);	// Run this command everytime you call free to merge mergeable sections...
+	node *p = size24s[k];
+	if (p->size == 4096) {
+		stats.pages_unmapped += 1;
+		munmap(&p, 4096);	// Freelist lengths?!?! Idk....
+		if (k==1)
+			size24s[k]=0;
+	}
+}
+
 void size_free(void* ptr) {
 	stats.chunks_freed += 1;
-	addtolist(ptr, array);
+	addto24s(ptr);
 }
 
 void* size24_malloc() {
 	static int k = -1;
-	static int pos = 0;
-	if (pos>24) {
-		size_t* ptr = (void*)array[k];
-		array[k] = (node*)((char*)array[k]+24);
-		array[k]->size = *ptr-24;
-		pos -= 24;
+	static int count = 1;
+	size_t* ptr;
+	if (k==-1||count==4096/24) {
+		k = lesscore();
+		count = 0;
+	}
+	ptr = (size_t*)size24s[k];
+	if (size24s[k]->size>32) {
+		size24s[k] = (node*)((char*)size24s[k]+24);
+		size24s[k]->size = *ptr-24;
 		*ptr=24;
 		stats.chunks_allocated += 1;
+		count++;
 		return ptr + 1;
-	} else {
-		k = lesscore();
-		pos = PAGE_SIZE/2;
-		return size24_malloc();
 	}
+	k = lesscore();
+	return size24_malloc();
 }
 
 /* 40, 64, 72, 136, 264, 520, 1032 */
@@ -277,7 +325,7 @@ pfree(void* ap)
   	break;
   default:
   	if(*ptr>PAGE_SIZE) big_free(ptr);
-  	else bucket_free(ptr);
+  	else m_free(ptr);
   	break;
   }
 }
@@ -289,6 +337,7 @@ pmalloc(size_t nbytes)
   if (first_run == true) {
   	personality(ADDR_NO_RANDOMIZE);
   	array=mmap(0, PAGE_SIZE, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_SHARED, -1, 0);
+  	size24s=mmap(0, PAGE_SIZE, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_SHARED, -1, 0);
   	first_run = false;
   }
   nbytes += sizeof(size_t);
@@ -298,6 +347,8 @@ pmalloc(size_t nbytes)
   	return size24_malloc();
   	break;
   default:
+  	nbytes -= sizeof(size_t);
+  	nbytes += sizeof(header);
   	return pmalloc_helper(nbytes);
   	break;
   }
