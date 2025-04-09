@@ -260,7 +260,7 @@ void* size24_malloc() {
 		k = lesscore(size24s);
 	}
 	ptr = (size_t*)size24s[k];
-	if (size24s[k]->size>48) {
+	if (size24s[k]->size>40) {
 		size24s[k] = (node*)((char*)size24s[k]+24);
 		size24s[k]->size = *ptr-24;
 		*ptr=24;
