@@ -22,13 +22,6 @@ static __thread node **array;
 static __thread node **size24s;
 
 int
-findlist(void* src, node **list) {
-	int i;
-	for(i=0;((uintptr_t)src/4096)!=((uintptr_t)list[i]/4096)&&list[i];i++);
-	return i;
-}
-
-int
 nextfreelist(node **list) {
 	int i;
 	for(i=0;list[i]!=0;i++);
@@ -36,8 +29,8 @@ nextfreelist(node **list) {
 }
 
 void
-pnodemerge(int list) {
-	node *curr = array[list];
+pnodemerge(node **list, int l) {
+	node *curr = list[l];
 	node *prev = NULL;
 	while (curr) {
 		if (((char*)curr+curr->size)==((char*)curr->next)&&curr->size<PAGE_SIZE) {
@@ -67,7 +60,7 @@ addtolist(void* ptr, int l) {
 		block->next = array[l];
 		array[l] = block;
 	}
-	pnodemerge(l);	// Merge
+	pnodemerge(array, l);	// Merge
 	node *p = array[l];
 	if (p->size == PAGE_SIZE) {
 		stats.pages_unmapped += 1;
@@ -92,26 +85,12 @@ push(int k, int size) {
  	array[k]->size = s - size;
 }
 
-void*
-m_malloc(size_t size) {
-	static int k = -1;
-	if (k == -1) {
-		k = morecore();
-	}
-	
-	int i=0;
-	for(; array[i] && i<=k;i++) {
-		if(array[i]->size>=size) {
-			node *ptr = array[i];
-			push(i, size);
-			ptr->size = size;
-			ptr->k = k;
-			stats.chunks_allocated+=1;
-			return (size_t*)ptr + 2;
-		}
-	}
-	k = morecore();
-	return m_malloc(size);
+char *pstrdup(char *arg) {
+        int i=0;
+        for(; arg[i]!=0; i++);
+        char *buf = pmalloc(i+1);
+        for(int j=0; j<=i; j++) buf[j]=arg[j];
+        return buf;
 }
 
 long list_length(node *k) {
@@ -122,22 +101,6 @@ long list_length(node *k) {
     }
     return length;
 }
-
-void
-m_free(void *ptr) {
-	stats.chunks_freed += 1;
-	node *p = (node*)ptr;
-	addtolist(ptr, p->k);
-}
-
-char *pstrdup(char *arg) {
-        int i=0;
-        for(; arg[i]!=0; i++);
-        char *buf = pmalloc(i+1);
-        for(int j=0; j<=i; j++) buf[j]=arg[j];
-        return buf;
-}
-
 
 long free_list_length() {
     long length = 0;
@@ -201,50 +164,56 @@ big_free(void *ptr) {
 
 void*
 pmalloc_helper(size_t size) {
-	if (size<=PAGE_SIZE) return m_malloc(size);
+	if (size<=PAGE_SIZE) {
+			static int k = -1;
+		if (k == -1) {
+			k = morecore();
+		}
+	
+		int i=0;
+		for(; array[i] && i<=k;i++) {
+			if(array[i]->size>=size) {
+				node *ptr = array[i];
+				push(i, size);
+				ptr->size = size;
+				ptr->k = k;
+				stats.chunks_allocated+=1;
+				return (size_t*)ptr + 2;
+			}
+		}
+		k = morecore();
+		return pmalloc_helper(size);
+	}
 	else return big_malloc(size);
 }
 
 void
 pfree_helper(void *ptr) {
 	size_t *p = (size_t*)ptr;
-	if(*p>PAGE_SIZE) big_free(ptr);
-	else m_free(ptr);
-}
-
-/*void printflist() {
-	node *curr = mem;
-	while (curr) {
-		printf("node at : %u\n", (unsigned int)((char*)curr));
-		printf("reporting size : %lu\n", curr->size);
-		curr=curr->next;
+	if(*p<=PAGE_SIZE) {
+		stats.chunks_freed += 1;
+		node *p = (node*)ptr;
+		addtolist(ptr, p->k);
 	}
-}*/
+	else big_free(ptr);
+}
 
 /* - Size Specific Allocs and Frees - */
 
-// (uintptr_t)a / 4096 == ( uintptr_t ) b / 4096
-
 int
-lesscore() {
-	int k = nextfreelist(size24s);
-	size24s[k] = mmap(0, 4096, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_SHARED, -1, 0);
-	stats.pages_mapped += 1;
-	size24s[k]->size=4096;
-	return k;
+findlist(void* src, node **list) {
+	int i;
+	for(i=0;((uintptr_t)src/4096)!=((uintptr_t)list[i]/4096)&&list[i];i++);
+	return i;
 }
 
-void
-merge24s(int k) {
-	node *curr = size24s[k];
-	node *prev = NULL;
-	while (curr) {
-		if (((uintptr_t)curr+curr->size)==((uintptr_t)curr->next)&&((uintptr_t)curr/4096)==((uintptr_t)curr->next/4096)&&curr->size<4096&&curr&&curr->next) {
-			curr->size+=curr->next->size;
-			curr->next=curr->next->next;
-		}
-		else curr = curr->next;
-	}
+int
+lesscore(node** list) {
+	int k = nextfreelist(list);
+	list[k] = mmap(0, 4096, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_SHARED, -1, 0);
+	stats.pages_mapped += 1;
+	list[k]->size=4096;
+	return k;
 }
 
 void
@@ -265,26 +234,30 @@ addto24s(void* ptr) {
 		block->next = size24s[k];
 		size24s[k] = block;
 	}
-	merge24s(k);	// Run this command everytime you call free to merge mergeable sections...
+	pnodemerge(size24s, k);	// Run this command everytime you call free to merge mergeable sections...
 	node *p = size24s[k];
 	if (p->size == 4096) {
 		stats.pages_unmapped += 1;
-		munmap(&p, 4096);	// Freelist lengths?!?! Idk....
+		munmap(&p, 4096);
 		if (k==1)
 			size24s[k]=0;
 	}
 }
 
-void size_free(void* ptr) {
+void size_free(void* ptr, int l) {
 	stats.chunks_freed += 1;
-	addto24s(ptr);
+	switch (l) {
+		case 24:
+			addto24s(ptr);
+			break;
+	}
 }
 
 void* size24_malloc() {
 	static int k = -1;
 	size_t* ptr;
 	if (k==-1) {
-		k = lesscore();
+		k = lesscore(size24s);
 	}
 	ptr = (size_t*)size24s[k];
 	if (size24s[k]->size>48) {
@@ -294,7 +267,7 @@ void* size24_malloc() {
 		stats.chunks_allocated += 1;
 		return ptr + 1;
 	}
-	k = lesscore();
+	k = lesscore(size24s);
 	return size24_malloc();
 }
 
@@ -308,12 +281,11 @@ pfree(void* ap)
   //printf("xfree(%ld)\n", *ptr);
   switch (*ptr) {
   case 24:
-  	return size_free(ptr);
+  	return size_free(ptr, *ptr);
   	break;
   default:
   	*ptr--;
-  	if(*ptr>PAGE_SIZE) big_free(ptr);
-  	else m_free(ptr);
+  	pfree_helper(ptr);
   	break;
   }
 }
@@ -331,13 +303,13 @@ pmalloc(size_t nbytes)
   nbytes += sizeof(size_t);
   //printf("xmalloc(%ld)\n", nbytes);
   switch (nbytes) {
-  case 24:
-  	return size24_malloc();
-  	break;
-  default:
-  	nbytes -= sizeof(size_t);
-  	nbytes += sizeof(header);
-  	return pmalloc_helper(nbytes);
+  	case 24:
+  		return size24_malloc();
+  		break;
+  	default:
+  		nbytes -= sizeof(size_t);
+  		nbytes += sizeof(header);
+  		return pmalloc_helper(nbytes);
   	break;
   }
 }
