@@ -94,29 +94,29 @@ char *pstrdup(char *arg) {
 }
 
 long list_length(node *k) {
-    long length = 0;
-    while (k) {
-        length++;
-        k = k->next;
-    }
-    return length;
+	long length = 0;
+	while (k) {
+        	length++;
+        	k = k->next;
+	}
+	return length;
 }
 
 long free_list_length() {
-    long length = 0;
-    for (int i=0;array[i]; i++) {
-        length+=list_length(array[i]);
-    }
-    for (int i=0;size24s[i]; i++) {
-        length+=list_length(size24s[i]);
-    }
-    stats.free_length += length;
-    return length;
+	long length = 0;
+	for (int i=0;array[i]; i++) {
+		length+=list_length(array[i]);
+	}
+	for (int i=0;size24s[i]; i++) {
+        	length+=list_length(size24s[i]);
+	}
+	stats.free_length += length;
+	return length;
 }
 
 pm_stats* pgetstats() {
-    stats.free_length = free_list_length();
-    return &stats;
+	stats.free_length = free_list_length();
+	return &stats;
 }
 
 void pprintstats() {
@@ -131,27 +131,27 @@ void pprintstats() {
 }
 
 static size_t div_up(size_t xx, size_t yy) {
-    size_t zz = xx / yy;
-    if (zz * yy == xx) {
-        return zz;
-    } else {
-        return zz + 1;
-    }
+	size_t zz = xx / yy;
+	if (zz * yy == xx) {
+        	return zz;
+	} else {
+        	return zz + 1;
+	}
 }
 
 void*
 big_malloc(size_t size) {
-    // Handle large allocation (>= 1 page)
-    size_t pages_needed = div_up(size, 4096);
-    size_t* new_block = mmap(0, pages_needed * PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
-    if (new_block == MAP_FAILED) {
-        perror("mmap failed");
-        exit(EXIT_FAILURE);
-    }
-    stats.pages_mapped += pages_needed;
-    stats.chunks_allocated += 1;
-    *new_block = pages_needed * 4096;
-    return new_block + 2; // Return pointer after size header
+	// Handle large allocation (>= 1 page)
+	size_t pages_needed = div_up(size, 4096);
+	size_t* new_block = mmap(0, pages_needed * PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+	if (new_block == MAP_FAILED) {
+        	perror("mmap failed");
+        	exit(EXIT_FAILURE);
+	}
+	stats.pages_mapped += pages_needed;
+	stats.chunks_allocated += 1;
+	*new_block = pages_needed * 4096;
+	return new_block + 2; // Return pointer after size header
 }
 
 void
