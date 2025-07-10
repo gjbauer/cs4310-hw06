@@ -165,7 +165,7 @@ big_free(void *ptr) {
 void*
 pmalloc_helper(size_t size) {
 	if (size<=PAGE_SIZE) {
-			static int k = -1;
+		static int k = -1;
 		if (k == -1) {
 			k = morecore();
 		}
@@ -277,40 +277,40 @@ void* size24_malloc() {
 void
 pfree(void* ap)
 {
-  size_t *ptr = (size_t*)ap - 1;
-  //printf("xfree(%ld)\n", *ptr);
-  switch (*ptr) {
-  case 24:
-  	return size_free(ptr, *ptr);
-  	break;
-  default:
-  	*ptr--;
-  	pfree_helper(ptr);
-  	break;
-  }
+	size_t *ptr = (size_t*)ap - 1;
+	//printf("xfree(%ld)\n", *ptr);
+	switch (*ptr) {
+		case 24:
+  		return size_free(ptr, *ptr);
+  		break;
+	default:
+  		*ptr--;
+  		pfree_helper(ptr);
+  		break;
+	}
 }
 
 
 void*
 pmalloc(size_t nbytes)
 {
-  if (first_run == true) {
-  	personality(ADDR_NO_RANDOMIZE);
-  	array=mmap(0, PAGE_SIZE, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_SHARED, -1, 0);
-  	size24s=mmap(0, PAGE_SIZE, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_SHARED, -1, 0);
-  	first_run = false;
-  }
-  nbytes += sizeof(size_t);
-  //printf("xmalloc(%ld)\n", nbytes);
-  switch (nbytes) {
-  	case 24:
-  		return size24_malloc();
-  		break;
-  	default:
-  		nbytes -= sizeof(size_t);
-  		nbytes += sizeof(header);
-  		return pmalloc_helper(nbytes);
-  	break;
-  }
+	if (first_run == true) {
+  		personality(ADDR_NO_RANDOMIZE);
+  		array=mmap(0, PAGE_SIZE, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_SHARED, -1, 0);
+  		size24s=mmap(0, PAGE_SIZE, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_SHARED, -1, 0);
+  		first_run = false;
+  	}
+	nbytes += sizeof(size_t);
+	//printf("xmalloc(%ld)\n", nbytes);
+	switch (nbytes) {
+  		case 24:
+  			return size24_malloc();
+  			break;
+  		default:
+  			nbytes -= sizeof(size_t);
+  			nbytes += sizeof(header);
+  			return pmalloc_helper(nbytes);
+  			break;
+	}
 }
 
