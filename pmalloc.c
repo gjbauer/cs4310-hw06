@@ -120,14 +120,14 @@ pm_stats* pgetstats() {
 }
 
 void pprintstats() {
-    stats.free_length = free_list_length();
-    if (stats.pages_unmapped > 600) stats.pages_unmapped/=2;
-    fprintf(stderr, "\n== Panther Malloc Stats ==\n");
-    fprintf(stderr, "Mapped:   %ld\n", stats.pages_mapped);
-    fprintf(stderr, "Unmapped: %ld\n", stats.pages_unmapped);
-    fprintf(stderr, "Allocs:   %ld\n", stats.chunks_allocated);
-    fprintf(stderr, "Frees:    %ld\n", stats.chunks_freed);
-    fprintf(stderr, "Freelen:  %ld\n", stats.free_length);
+	stats.free_length = free_list_length();
+	if (stats.pages_unmapped > 600) stats.pages_unmapped/=2;
+	fprintf(stderr, "\n== Panther Malloc Stats ==\n");
+	fprintf(stderr, "Mapped:   %ld\n", stats.pages_mapped);
+	fprintf(stderr, "Unmapped: %ld\n", stats.pages_unmapped);
+	fprintf(stderr, "Allocs:   %ld\n", stats.chunks_allocated);
+	fprintf(stderr, "Frees:    %ld\n", stats.chunks_freed);
+	fprintf(stderr, "Freelen:  %ld\n", stats.free_length);
 }
 
 static size_t div_up(size_t xx, size_t yy) {
